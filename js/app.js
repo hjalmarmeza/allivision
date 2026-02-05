@@ -926,13 +926,25 @@ function handleRemoteCommand(cmd) {
 
             const target = document.elementFromPoint(cursorX, cursorY);
             if (target) {
-                const card = target.closest('.channel-card, .nav-item, .category-card, .close-btn, .search-box');
+                const card = target.closest('.channel-card, .nav-item, .category-card, .close-btn, .search-box, .glass-select, .pip-btn, .extra-btn, button, [onclick]');
                 document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
                 if (card) card.classList.add('focused');
             }
         } else if (cmd.type === 'click') {
             const target = document.elementFromPoint(cursorX, cursorY);
-            if (target) target.click();
+            if (target) {
+                console.log("Virtual Click on:", target);
+                // Simulate full mouse interaction
+                const options = { bubbles: true, cancelable: true, view: window };
+                target.dispatchEvent(new MouseEvent('mousedown', options));
+                target.dispatchEvent(new MouseEvent('mouseup', options));
+                target.click();
+
+                // If it's an input/select, focus it
+                if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'BUTTON') {
+                    target.focus();
+                }
+            }
         } else if (cmd.type === 'search') {
             const input = document.getElementById('search-input');
             if (input) {
@@ -1338,40 +1350,65 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
             const options = await getUniqueValuesFromSubset(fullSubset, secondaryKey);
 
             if (options.length > 1) {
-                const select = document.createElement('select');
-                select.className = 'glass-select';
-                select.style.padding = '8px 12px';
-                select.style.borderRadius = '8px';
-                select.style.border = '1px solid var(--glass-border)';
-                select.style.background = 'var(--bg-panel)';
-                select.style.color = '#fff';
-                select.style.outline = 'none';
-                select.style.marginLeft = 'auto'; // Force right align
+                const dropdownWrap = document.createElement('div');
+                dropdownWrap.className = 'custom-dropdown-wrap';
+                dropdownWrap.style.cssText = `position:relative; margin-left:auto; z-index:100;`;
 
-                let defaultOpt = document.createElement('option');
-                defaultOpt.value = 'all';
-                defaultOpt.textContent = `Todos (${label})`;
-                select.appendChild(defaultOpt);
+                const btn = document.createElement('button');
+                btn.className = 'glass-select';
+                btn.style.cssText = `
+                    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--glass-border);
+                    background: var(--bg-panel); color: #fff; cursor: pointer; display: flex; 
+                    align-items: center; gap: 8px; font-weight: 500; font-family: inherit;
+                `;
+                const currentValLabel = filterContext.secondaryValue && filterContext.secondaryValue !== 'all' ? filterContext.secondaryValue : `Todos (${label})`;
+                btn.innerHTML = `<span>${currentValLabel}</span> <span class="material-icons-round" style="font-size:1.2rem;">expand_more</span>`;
 
-                options.forEach(opt => {
-                    const o = document.createElement('option');
-                    o.value = opt.name;
-                    o.textContent = `${opt.name} (${opt.count})`;
-                    if (filterContext.secondaryValue === opt.name) o.selected = true;
-                    select.appendChild(o);
-                });
+                const menu = document.createElement('div');
+                menu.className = 'custom-dropdown-menu hidden';
+                menu.style.cssText = `
+                    position: absolute; top: calc(100% + 5px); right: 0; min-width: 180px;
+                    background: var(--bg-panel); border: 1px solid var(--glass-border);
+                    border-radius: 12px; backdrop-filter: blur(20px); box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                    overflow: hidden; padding: 5px;
+                `;
 
-                select.onchange = async (e) => {
-                    const val = e.target.value;
-                    const newChannels = await getChannelsByFilter(filterContext.type, filterContext.value, secondaryKey, val);
-                    renderChannelGrid(newChannels, title, true, {
-                        ...filterContext,
-                        secondaryValue: val
-                    });
+                const createOpt = (name, count, isAll = false) => {
+                    const opt = document.createElement('div');
+                    opt.className = 'dropdown-item';
+                    opt.style.cssText = `
+                        padding: 10px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;
+                        transition: background 0.2s; display: flex; justify-content: space-between;
+                    `;
+                    opt.innerHTML = `<span>${isAll ? `Todos (${label})` : name}</span> ${isAll ? '' : `<span style="color:var(--text-muted); opacity:0.7">${count}</span>`}`;
+                    opt.onclick = async () => {
+                        const val = isAll ? 'all' : name;
+                        const newChannels = await getChannelsByFilter(filterContext.type, filterContext.value, secondaryKey, val);
+                        renderChannelGrid(newChannels, title, true, {
+                            ...filterContext,
+                            secondaryValue: val
+                        });
+                    };
+                    opt.onmouseenter = () => opt.style.background = 'rgba(255,255,255,0.1)';
+                    opt.onmouseleave = () => opt.style.background = 'transparent';
+                    return opt;
                 };
 
-                // Insert into the header div
-                container.firstElementChild.appendChild(select);
+                menu.appendChild(createOpt('all', 0, true));
+                options.forEach(opt => menu.appendChild(createOpt(opt.name, opt.count)));
+
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    const isOpen = !menu.classList.contains('hidden');
+                    document.querySelectorAll('.custom-dropdown-menu').forEach(m => m.classList.add('hidden'));
+                    if (!isOpen) menu.classList.remove('hidden');
+                };
+
+                document.addEventListener('click', () => menu.classList.add('hidden'), { once: false });
+
+                dropdownWrap.appendChild(btn);
+                dropdownWrap.appendChild(menu);
+                container.firstElementChild.appendChild(dropdownWrap);
             }
         }
     }
