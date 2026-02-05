@@ -772,9 +772,13 @@ function initRemoteControl(pairId) {
             <!-- Extras Tab -->
             <div id="tab-extras" class="rem-content">
                 <div class="extras-grid">
-                    <button class="extra-btn" onclick="sendCmd('spanish-tv')" style="grid-column: span 2; background: linear-gradient(135deg, #7000ff, #00f2ff); color: #050510;">
+                    <button class="extra-btn" onclick="sendCmd('spanish-tv')" style="background: linear-gradient(135deg, #7000ff, #00f2ff); color: #050510;">
                         <span class="material-icons-round" style="color: #050510;">tv</span>
-                        <b>VER TV EN ESPAÑOL</b>
+                        <b>TV ESPAÑOL</b>
+                    </button>
+                    <button class="extra-btn" onclick="sendCmd('english-tv')" style="background: linear-gradient(135deg, #00f2ff, #7000ff); color: #050510;">
+                        <span class="material-icons-round" style="color: #050510;">language</span>
+                        <b>ENGLISH TV</b>
                     </button>
                     <button class="extra-btn" onclick="sendCmd('ambient')"><span class="material-icons-round">landscape</span>Ambiente</button>
                     <button class="extra-btn" onclick="sendCmd('mosaic')"><span class="material-icons-round">grid_view</span>Mosaico</button>
@@ -957,6 +961,7 @@ function handleRemoteCommand(cmd) {
         case 'ambient': toggleAmbientMode(); break;
         case 'mosaic': loadView('home'); showToast("Cargando mosaico de canales..."); break;
         case 'spanish-tv': loadView('spanish_auto'); break;
+        case 'english-tv': loadView('english_auto'); break;
         case 'sleep-30': setSleepTimer(30); break;
         case 'left': if (isPlayerOpen) { closePlayer(); } else { moveFocus('left'); } break;
         case 'right': if (!isPlayerOpen) moveFocus('right'); break;
@@ -1208,7 +1213,17 @@ async function loadView(viewName) {
                 currentChannelList = channels;
                 currentChannelIndex = 0;
                 showToast("Sintonizando TV en Español...");
-                setTimeout(() => openPlayer(channels[0]), 500);
+                setTimeout(() => openPlayer(channels[0], channels, 0), 500);
+            }
+        } else if (viewName === 'english_auto') {
+            const channels = await getChannelsByFilter('language', 'Inglés');
+            renderChannelGrid(channels, 'Zapping: English TV');
+
+            if (channels.length > 0) {
+                currentChannelList = channels;
+                currentChannelIndex = 0;
+                showToast("Sintonizando TV en Inglés...");
+                setTimeout(() => openPlayer(channels[0], channels, 0), 500);
             }
         }
     } catch (e) {
