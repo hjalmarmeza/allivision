@@ -19,6 +19,10 @@
 
     <!-- HLS.js for Streaming -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- PeerJS for Remote Control -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QR Code Generator -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 
 <body>
@@ -50,6 +54,11 @@
                 <button class="nav-item" data-view="favorites">
                     <span class="material-icons-round">favorite</span>
                     <span>Favoritos</span>
+                </button>
+                <div class="nav-spacer"></div>
+                <button class="nav-item remote-nav" id="open-remote-modal">
+                    <span class="material-icons-round">settings_remote</span>
+                    <span>Emparejar Mando</span>
                 </button>
             </nav>
 
@@ -102,6 +111,52 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Pairing Modal (TV Side) -->
+        <div id="pairing-modal" class="modal-overlay hidden">
+            <div class="glass-modal">
+                <button class="close-modal"><span class="material-icons-round">close</span></button>
+                <h2>Mando a Distancia</h2>
+                <p>Escanea el código con tu móvil para usarlo como mando.</p>
+                <div id="qrcode"></div>
+                <div class="pairing-code">Código: <span id="pair-code-display">---</span></div>
+                <div class="pairing-status" id="pairing-status">Esperando conexión...</div>
+            </div>
+        </div>
+
+        <!-- Touch Remote Screen (Phone Side) -->
+        <div id="remote-control-screen" class="hidden">
+            <div class="remote-header">
+                <span class="material-icons-round">settings_remote</span>
+                <h2>Allivision Remote</h2>
+            </div>
+
+            <div class="remote-grid">
+                <button class="remote-btn ch-plus" data-cmd="next">
+                    <span class="material-icons-round">add</span>
+                    <span>CH +</span>
+                </button>
+                <button class="remote-btn vol-plus" data-cmd="vol-up">
+                    <span class="material-icons-round">volume_up</span>
+                </button>
+                <button class="remote-btn ch-minus" data-cmd="prev">
+                    <span class="material-icons-round">remove</span>
+                    <span>CH -</span>
+                </button>
+                <button class="remote-btn vol-minus" data-cmd="vol-down">
+                    <span class="material-icons-round">volume_down</span>
+                </button>
+                <button class="remote-btn mute-btn" data-cmd="mute">
+                    <span class="material-icons-round">volume_off</span>
+                    <span>MUTE</span>
+                </button>
+                <button class="remote-btn power-btn" data-cmd="close">
+                    <span class="material-icons-round">power_settings_new</span>
+                    <span>SALIR</span>
+                </button>
+            </div>
+            <div class="remote-status-active">Conectado a la TV</div>
         </div>
     </div>
 

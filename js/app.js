@@ -19,6 +19,8 @@ let brokenChannels = JSON.parse(localStorage.getItem(BROKEN_KEY)) || [];
 // --- Remote Control State ---
 let currentChannelList = [];
 let currentChannelIndex = -1;
+let peer = null;
+let conn = null;
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', init);
@@ -355,6 +357,24 @@ async function init() {
     // Close Player
     document.getElementById('close-player').addEventListener('click', closePlayer);
 
+    // Bind Remote Modal Actions
+    document.getElementById('open-remote-modal').addEventListener('click', () => {
+        document.getElementById('pairing-modal').classList.remove('hidden');
+        initTVReceiver();
+    });
+    document.querySelector('.close-modal').addEventListener('click', () => {
+        document.getElementById('pairing-modal').classList.add('hidden');
+    });
+
+    // Check if we are in "Remote Mode" (URL param)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('pair')) {
+        const pairId = urlParams.get('pair');
+        initRemoteControl(pairId);
+    }
+
+    // Bind Zapping Buttons (UI)
+
     // Bind Zapping Buttons
     document.getElementById('zap-next').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -380,7 +400,81 @@ async function init() {
     });
 }
 
-// --- Zapping Logic ---
+// --- Remote Control System (Peer-to-Peer) ---
+
+function initTVReceiver() {
+    if (peer) return; // Already init
+
+    // Create a semi-random 4-digit ID for easier entry
+    const id = Math.floor(1000 + Math.random() * 9000).toString();
+    peer = new Peer(`allivision-tv-${id}`);
+
+    peer.on('open', (peerId) => {
+        const simpleId = peerId.split('-').pop();
+        document.getElementById('pair-code-display').textContent = simpleId;
+
+        // Generate QR URL
+        const remoteUrl = `${window.location.origin}${window.location.pathname}?pair=${simpleId}`;
+        const qrContainer = document.getElementById('qrcode');
+        qrContainer.innerHTML = ""; // Clear
+        new QRCode(qrContainer, {
+            text: remoteUrl,
+            width: 200,
+            height: 200
+        });
+    });
+
+    peer.on('connection', (connection) => {
+        conn = connection;
+        document.getElementById('pairing-status').textContent = "¡Mando conectado!";
+        document.getElementById('pairing-status').style.color = "#00ff88";
+
+        setTimeout(() => {
+            document.getElementById('pairing-modal').classList.add('hidden');
+            showToast("Control remoto vinculado exitosamente.");
+        }, 1500);
+
+        conn.on('data', (data) => {
+            handleRemoteCommand(data);
+        });
+    });
+}
+
+function initRemoteControl(pairId) {
+    // UI Switch to Remote Mode
+    document.querySelector('.app-container').classList.add('hidden');
+    document.getElementById('remote-control-screen').classList.remove('hidden');
+
+    peer = new Peer();
+    peer.on('open', () => {
+        const connection = peer.connect(`allivision-tv-${pairId}`);
+        connection.on('open', () => {
+            console.log("Connected to TV");
+            // Bind Buttons
+            document.querySelectorAll('.remote-btn').forEach(btn => {
+                btn.onclick = () => {
+                    connection.send(btn.dataset.cmd);
+                    // Haptic feedback if available
+                    if (navigator.vibrate) navigator.vibrate(50);
+                };
+            });
+        });
+    });
+}
+
+function handleRemoteCommand(cmd) {
+    console.log("Remote Command:", cmd);
+    const video = document.getElementById('video');
+
+    switch (cmd) {
+        case 'next': zapNext(); break;
+        case 'prev': zapPrev(); break;
+        case 'vol-up': if (video.volume < 0.9) video.volume += 0.1; break;
+        case 'vol-down': if (video.volume > 0.1) video.volume -= 0.1; break;
+        case 'mute': video.muted = !video.muted; break;
+        case 'close': closePlayer(); break;
+    }
+}
 function zapNext() {
     if (currentChannelList.length === 0) return;
     currentChannelIndex++;
