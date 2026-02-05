@@ -247,6 +247,8 @@ function openPlayer(channel, list = [], index = -1) {
     if (existingPip) existingPip.remove();
     const existingCC = document.getElementById('cc-btn');
     if (existingCC) existingCC.remove();
+    const existingAudio = document.getElementById('audio-btn');
+    if (existingAudio) existingAudio.remove();
 
     title.textContent = channel.name;
     overlay.classList.remove('hidden');
@@ -283,6 +285,13 @@ function openPlayer(channel, list = [], index = -1) {
     ccBtn.style.display = 'none';
     ccBtn.innerHTML = '<span class="material-icons-round">closed_caption</span>';
     header.insertBefore(ccBtn, document.getElementById('close-player'));
+
+    const audioBtn = document.createElement('button');
+    audioBtn.id = 'audio-btn';
+    audioBtn.className = 'pip-btn';
+    audioBtn.style.display = 'none';
+    audioBtn.innerHTML = '<span class="material-icons-round">language</span>';
+    header.insertBefore(audioBtn, document.getElementById('close-player'));
 
     if (Hls.isSupported()) {
         const hls = new Hls({
@@ -352,6 +361,21 @@ function openPlayer(channel, list = [], index = -1) {
                     const label = next === -1 ? "Desactivados" : (hls.subtitleTracks[next].name || `Pista ${next + 1}`);
                     showToast(`Subtítulos: ${label}`);
                     ccBtn.style.color = next === -1 ? '#fff' : 'var(--accent-secondary)';
+                };
+            }
+        });
+
+        // AUDIO TRACK LOGIC
+        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (e, data) => {
+            if (data.audioTracks && data.audioTracks.length > 1) {
+                audioBtn.style.display = 'inline-block';
+                audioBtn.onclick = () => {
+                    let next = hls.audioTrack + 1;
+                    if (next >= hls.audioTracks.length) next = 0;
+                    hls.audioTrack = next;
+                    const label = hls.audioTracks[next].name || hls.audioTracks[next].lang || `Idioma ${next + 1}`;
+                    showToast(`Audio: ${label}`);
+                    audioBtn.style.color = 'var(--accent-primary)';
                 };
             }
         });
@@ -476,6 +500,8 @@ function closePlayer() {
     if (existingPip) existingPip.remove();
     const existingCC = document.getElementById('cc-btn');
     if (existingCC) existingCC.remove();
+    const existingAudio = document.getElementById('audio-btn');
+    if (existingAudio) existingAudio.remove();
 
     // Reset Remote State
     if (conn && conn.open) {
