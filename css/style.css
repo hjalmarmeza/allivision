@@ -59,6 +59,7 @@ body {
     font-size: 1.5rem;
     background: linear-gradient(to right, var(--text-main), var(--accent-primary));
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -446,6 +447,89 @@ video {
     cursor: default;
     transform: none;
     filter: grayscale(1);
+}
+
+/* Zapping Buttons */
+.zap-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(15, 15, 26, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+    color: white;
+    width: 50px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.3s ease;
+    opacity: 0;
+}
+
+.video-wrapper:hover .zap-btn {
+    opacity: 1;
+}
+
+.zap-btn:hover {
+    background: var(--accent-primary);
+    color: var(--bg-dark);
+    box-shadow: 0 0 20px var(--accent-primary);
+}
+
+.zap-btn.prev {
+    left: 0;
+    border-radius: 0 12px 12px 0;
+}
+
+.zap-btn.next {
+    right: 0;
+    border-radius: 12px 0 0 12px;
+}
+
+.zap-btn span {
+    font-size: 2.5rem;
+}
+
+.player-controls {
+    padding: 1rem;
+    background: var(--bg-panel);
+    display: flex;
+    justify-content: center;
+}
+
+.remote-hint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px 20px;
+    border-radius: 30px;
+}
+
+.remote-hint b {
+    color: var(--accent-primary);
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
 }
 
 /* Status Indicator on Card */

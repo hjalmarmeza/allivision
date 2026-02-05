@@ -16,6 +16,10 @@ const BROKEN_KEY = 'allivision_broken';
 let favorites = JSON.parse(localStorage.getItem(FAVORITES_KEY)) || [];
 let brokenChannels = JSON.parse(localStorage.getItem(BROKEN_KEY)) || [];
 
+// --- Remote Control State ---
+let currentChannelList = [];
+let currentChannelIndex = -1;
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', init);
 // ... (init remains same)
@@ -148,11 +152,17 @@ async function handleSearch(query) {
 
 let playTimeoutTimer;
 
-function openPlayer(channel) {
+function openPlayer(channel, list = [], index = -1) {
     const overlay = document.getElementById('player-overlay');
     const title = document.getElementById('player-title');
     const video = document.getElementById('video');
     const header = document.querySelector('.player-header');
+
+    // Update Internal State for Zapping
+    if (list.length > 0) {
+        currentChannelList = list;
+        currentChannelIndex = index;
+    }
 
     // Reset Timeout
     clearTimeout(playTimeoutTimer);
@@ -344,6 +354,47 @@ async function init() {
 
     // Close Player
     document.getElementById('close-player').addEventListener('click', closePlayer);
+
+    // Bind Zapping Buttons
+    document.getElementById('zap-next').addEventListener('click', (e) => {
+        e.stopPropagation();
+        zapNext();
+    });
+    document.getElementById('zap-prev').addEventListener('click', (e) => {
+        e.stopPropagation();
+        zapPrev();
+    });
+
+    // Global Keyboard Integration (Remote Control Feel)
+    document.addEventListener('keydown', (e) => {
+        const overlay = document.getElementById('player-overlay');
+        if (overlay.classList.contains('hidden')) return;
+
+        if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+            zapNext();
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+            zapPrev();
+        } else if (e.key === 'Escape') {
+            closePlayer();
+        }
+    });
+}
+
+// --- Zapping Logic ---
+function zapNext() {
+    if (currentChannelList.length === 0) return;
+    currentChannelIndex++;
+    if (currentChannelIndex >= currentChannelList.length) currentChannelIndex = 0; // Wrap around
+    openPlayer(currentChannelList[currentChannelIndex]);
+    showToast(`Cambiando a: ${currentChannelList[currentChannelIndex].name}`);
+}
+
+function zapPrev() {
+    if (currentChannelList.length === 0) return;
+    currentChannelIndex--;
+    if (currentChannelIndex < 0) currentChannelIndex = currentChannelList.length - 1; // Wrap around
+    openPlayer(currentChannelList[currentChannelIndex]);
+    showToast(`Cambiando a: ${currentChannelList[currentChannelIndex].name}`);
 }
 
 // --- Navigation & Views ---
@@ -557,7 +608,7 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
             </div>
         `;
 
-        card.onclick = () => openPlayer(channel);
+        card.onclick = () => openPlayer(channel, channels, index);
         grid.appendChild(card);
     });
 
