@@ -803,10 +803,15 @@ function initRemoteControl(pairId) {
         .rem-search-input { width: 100%; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 30px; padding: 12px 20px 12px 45px; color: white; outline: none; }
         .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #8b8b9e; }
         
-        .mini-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.8rem; font-weight: bold; width: 100%; border-radius: 12px; }
+        .grid-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .mini-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.8rem; font-weight: bold; width: 100%; transition: all 0.2s; }
+        .mini-btn:active { background: #00f2ff; color: #050510; transform: scale(0.95); }
         .exit-btn { border-color: #ff4757; color: #ff4757; }
         
-        .rem-select { width: 100%; background: #1a1a2e; border: 1px solid #00f2ff; border-radius: 12px; padding: 10px; color: white; margin-top: 10px; font-family: inherit; font-size: 0.9rem; outline: none; }
+        .rem-select { width: 100%; background: #1a1a2e; border: 1px solid #00f2ff; border-radius: 12px; padding: 10px; color: white; margin-bottom: 15px; font-family: inherit; font-size: 0.9rem; outline: none; }
+        .rem-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; padding-right: 5px; }
+        .rem-list-item { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px 15px; color: white; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; }
+        .rem-list-item:active { background: var(--accent-primary); color: #050510; }
     `;
     document.head.appendChild(style);
 
@@ -858,8 +863,8 @@ function initRemoteControl(pairId) {
 
                 <div class="grid-mini">
                     <button class="mini-btn" onclick="sendCmd('vol-up')"><span class="material-icons-round">volume_up</span> VOL+</button>
-                    <button class="mini-btn" onclick="sendCmd('next')"><span class="material-icons-round">skip_next</span> CH+</button>
                     <button class="mini-btn" onclick="sendCmd('vol-down')"><span class="material-icons-round">volume_down</span> VOL-</button>
+                    <button class="mini-btn" onclick="sendCmd('next')"><span class="material-icons-round">skip_next</span> CH+</button>
                     <button class="mini-btn" onclick="sendCmd('prev')"><span class="material-icons-round">skip_previous</span> CH-</button>
                 </div>
             </div>
@@ -876,21 +881,23 @@ function initRemoteControl(pairId) {
 
             <!-- Extras Tab -->
             <div id="tab-extras" class="rem-content">
+                <div style="font-weight: bold; color: var(--accent-primary); margin-bottom: 5px;">EXPLORAR CATEGORÍAS</div>
+                <select id="rem-lang-filter" class="rem-select" style="margin-bottom: 10px;">
+                    <option value="">Todos los Idiomas</option>
+                    <option value="Spanish">Español</option>
+                    <option value="English">English</option>
+                </select>
+                <div id="rem-cat-list" class="rem-list">
+                    <div style="text-align:center; color:#666; padding: 20px;">Cargando categorías...</div>
+                </div>
+
+                <div style="height: 20px;"></div>
+
                 <div class="extras-grid">
-                    <button class="extra-btn" onclick="sendCmd('spanish-tv')" style="background: linear-gradient(135deg, #7000ff, #00f2ff); color: #050510;">
-                        <span class="material-icons-round" style="color: #050510;">tv</span>
-                        <b>TV ESPAÑOL</b>
-                    </button>
-                    <button class="extra-btn" onclick="sendCmd('english-tv')" style="background: linear-gradient(135deg, #00f2ff, #7000ff); color: #050510;">
-                        <span class="material-icons-round" style="color: #050510;">language</span>
-                        <b>ENGLISH TV</b>
-                    </button>
-                    <button class="extra-btn" onclick="sendCmd({type:'load-category', category:'Movies'})"><span class="material-icons-round">movie</span>Películas</button>
-                    <button class="extra-btn" onclick="sendCmd({type:'load-category', category:'Sports'})"><span class="material-icons-round">sports_soccer</span>Deportes</button>
                     <button class="extra-btn" onclick="sendCmd('ambient')"><span class="material-icons-round">landscape</span>Ambiente</button>
                     <button class="extra-btn" onclick="sendCmd('mosaic')"><span class="material-icons-round">grid_view</span>Mosaico</button>
                     <button class="extra-btn" onclick="sendCmd('mute')"><span class="material-icons-round">volume_off</span>Silenciar</button>
-                    <button class="extra-btn" onclick="sendCmd({type:'fullscreen'})">
+                    <button class="extra-btn" onclick="sendCmd({type:'fullscreen'})" style="background: rgba(0, 242, 255, 0.1); border-color: var(--accent-primary);">
                         <span class="material-icons-round">fullscreen</span>
                         <b>PANTALLA</b>
                     </button>
@@ -903,7 +910,7 @@ function initRemoteControl(pairId) {
                         <b>Desvincular</b>
                     </button>
                 </div>
-                <button class="mini-btn exit-btn" onclick="location.reload()" style="margin-top:auto;">Reiniciar Mando</button>
+                <button class="mini-btn exit-btn" onclick="location.reload()" style="margin-top:20px;">Reiniciar Mando</button>
             </div>
         </div>
     `;
@@ -945,7 +952,31 @@ function initRemoteControl(pairId) {
         }
     });
 
-    // Load Categories for Remote
+    // Load Categories and Languages logic for Remote
+    const updateCategoryList = async () => {
+        const lang = document.getElementById('rem-lang-filter').value;
+        const listContainer = document.getElementById('rem-cat-list');
+        const cats = await getCategories();
+
+        listContainer.innerHTML = '';
+        cats.forEach(c => {
+            const row = document.createElement('div');
+            row.className = 'rem-list-item';
+            row.innerHTML = `<span>${c.name}</span> <span style="font-size:0.7rem; color:var(--accent-primary); opacity:0.7;">${c.count} ch</span>`;
+            row.onclick = () => {
+                sendCmd({ type: 'load-category', category: c.name, language: lang });
+                if (navigator.vibrate) navigator.vibrate(30);
+                showToast(`TV: ${c.name}`);
+            };
+            listContainer.appendChild(row);
+        });
+    };
+
+    const langFilter = document.getElementById('rem-lang-filter');
+    if (langFilter) langFilter.onchange = updateCategoryList;
+    updateCategoryList();
+
+    // Populate the quick selector in TV tab too
     getCategories().then(cats => {
         const select = document.getElementById('rem-category-select');
         if (select) {
@@ -957,10 +988,7 @@ function initRemoteControl(pairId) {
                 select.appendChild(opt);
             });
             select.onchange = (e) => {
-                if (e.target.value) {
-                    sendCmd({ type: 'load-category', category: e.target.value });
-                    showToast(`TV: Cargando ${e.target.value}`);
-                }
+                if (e.target.value) sendCmd({ type: 'load-category', category: e.target.value });
             };
         }
     });
@@ -1082,19 +1110,30 @@ function handleRemoteCommand(cmd) {
             }
         } else if (cmd.type === 'load-category') {
             loadView('categories').then(() => {
-                getChannelsByFilter('category', cmd.category).then(channels => {
-                    renderChannelGrid(channels, `Categoría: ${cmd.category}`, true, { type: 'category', value: cmd.category });
-                });
+                if (cmd.language) {
+                    getChannelsByFilter('language', cmd.language, 'category', cmd.category).then(channels => {
+                        renderChannelGrid(channels, `${cmd.category} (${cmd.language})`, true, { type: 'category', value: cmd.category });
+                    });
+                } else {
+                    getChannelsByFilter('category', cmd.category).then(channels => {
+                        renderChannelGrid(channels, `Categoría: ${cmd.category}`, true, { type: 'category', value: cmd.category });
+                    });
+                }
             });
-        } else if (cmd.type === 'fullscreen') {
+        }
+        else if (cmd.type === 'fullscreen') {
             const overlay = document.getElementById('player-overlay');
             if (!document.fullscreenElement) {
+                // Try overlay first
                 overlay.requestFullscreen().catch(e => {
-                    console.warn("Fullscreen error", e);
-                    showToast("Pulsa OK en la TV para autorizar pantalla completa");
+                    // Fallback to document
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.warn("Fullscreen complete failure", err);
+                        showToast("Pulsa OK en la TV para autorizar");
+                    });
                 });
             } else {
-                document.exitFullscreen().catch(e => { });
+                if (document.exitFullscreen) document.exitFullscreen().catch(e => { });
             }
         }
         return;
