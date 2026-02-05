@@ -408,90 +408,91 @@ async function init() {
 function initTVReceiver() {
     if (peer) return; // Already init
 
-    // Create a semi-random 4-digit ID for easier entry
-    const id = Math.floor(1000 + Math.random() * 9000).toString();
-    peer = new Peer(`allivision-tv-${id}`);
+    // Create a 4-digit ID
+    const simpleId = Math.floor(1000 + Math.random() * 9000).toString();
+    const fullPeerId = `allivision-${simpleId}`;
 
-    peer.on('open', (peerId) => {
-        const simpleId = peerId.split('-').pop();
+    console.log("Starting TV Receiver with ID:", fullPeerId);
+    peer = new Peer(fullPeerId);
+
+    peer.on('open', (id) => {
         document.getElementById('pair-code-display').textContent = simpleId;
 
-        // Generate QR URL
         const remoteUrl = `${window.location.origin}${window.location.pathname}?pair=${simpleId}`;
         const qrContainer = document.getElementById('qrcode');
-        qrContainer.innerHTML = ""; // Clear
+        qrContainer.innerHTML = "";
         new QRCode(qrContainer, {
             text: remoteUrl,
-            width: 200,
-            height: 200
+            width: 200, height: 200,
+            colorDark: "#050510",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
         });
     });
 
     peer.on('connection', (connection) => {
         conn = connection;
+        console.log("Remote Control Connected!");
         document.getElementById('pairing-status').textContent = "¡Mando conectado!";
         document.getElementById('pairing-status').style.color = "#00ff88";
 
         setTimeout(() => {
             document.getElementById('pairing-modal').classList.add('hidden');
-            showToast("Control remoto vinculado exitosamente.");
+            showToast("Control remoto vinculado.");
         }, 1500);
 
         conn.on('data', (data) => {
             handleRemoteCommand(data);
         });
     });
+
+    peer.on('error', (err) => {
+        console.error("PeerJS TV Error:", err);
+        if (err.type === 'unavailable-id') {
+            peer = null;
+            initTVReceiver(); // Try again with new ID
+        }
+    });
 }
 
 function initRemoteControl(pairId) {
-    // Hide everything else immediately
-    document.querySelector('.app-container').style.display = 'none';
+    console.log("Starting Remote Control for TV ID:", pairId);
+
+    // Hide App UI
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) appContainer.style.display = 'none';
+
     const remoteScreen = document.getElementById('remote-control-screen');
     remoteScreen.classList.remove('hidden');
 
     const statusText = remoteScreen.querySelector('.remote-status-active');
-    statusText.textContent = "Conectando al televisor...";
-    statusText.style.color = "var(--text-muted)";
+    statusText.textContent = "Buscando televisor...";
 
     peer = new Peer();
     peer.on('open', () => {
-        const connection = peer.connect(`allivision-tv-${pairId}`, {
-            reliable: true
-        });
+        const connection = peer.connect(`allivision-${pairId}`, { reliable: true });
 
         connection.on('open', () => {
-            console.log("Connected to TV");
-            statusText.textContent = "● Mando Activo (Conectado)";
+            statusText.textContent = "● Conectado a la TV";
             statusText.style.color = "#00ff88";
 
-            // Bind Buttons
             document.querySelectorAll('.remote-btn').forEach(btn => {
                 btn.onclick = () => {
                     connection.send(btn.dataset.cmd);
-                    // Haptic feedback
-                    if (window.navigator && window.navigator.vibrate) {
-                        window.navigator.vibrate(40);
-                    }
+                    if (navigator.vibrate) navigator.vibrate(40);
                 };
             });
         });
 
         connection.on('close', () => {
-            statusText.textContent = "Conexión perdida. Recarga para reconectar.";
-            statusText.style.color = "#ff4757";
-        });
-
-        connection.on('error', (err) => {
-            console.error("Remote Error:", err);
-            statusText.textContent = "Error de enlace. Verifica el código.";
+            statusText.textContent = "Conexión perdida. Pulsa Reconectar.";
             statusText.style.color = "#ff4757";
         });
     });
 
     peer.on('error', (err) => {
-        console.error("Peer Error:", err);
-        statusText.textContent = "Error de red. Intenta de nuevo.";
-        statusText.style.color = "#ff4757";
+        console.error("PeerJS Remote Error:", err);
+        statusText.textContent = "Error de conexión.";
     });
 }
 
@@ -665,7 +666,7 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
         grid.innerHTML = '<p style="grid-column: 1/-1; text-align:center; color:#aaa; margin-top:20px;">No se encontraron canales con este filtro.</p>';
     }
 
-    channels.forEach(channel => {
+    channels.forEach((channel, index) => {
         const card = document.createElement('div');
         card.className = 'channel-card';
         card.style.background = 'var(--bg-panel)';
@@ -676,16 +677,12 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
         card.style.transition = 'transform 0.2s';
         card.style.position = 'relative';
 
-        // --- Data URL for Scanner ---
+        // ... URL for scanner etc ...
         card.dataset.url = channel.url;
-        // ---------------------------
 
         // --- Smart Logo Logic ---
         let logoSrc = channel.logo;
         const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.name)}&background=1a1a2e&color=fff&size=128&length=2&font-size=0.5`;
-
-        // Strategy: Use official logo if exists, otherwise generate a text avatar immediately.
-        // We avoid the favicon search unless we really have no other choice, to keep console clean.
         let finalLogo = logoSrc || avatarUrl;
 
         let iconHtml = `<img src="${finalLogo}" 
@@ -694,7 +691,6 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
                              alt="${channel.name}" 
                              style="max-width: 100%; max-height: 100%; object-fit: contain; width: auto; height: auto;" 
                              onerror="this.onerror=null; this.src='${avatarUrl}';">`;
-        // -------------------------
 
         const flagUrl = channel.country_code ? `https://flagcdn.com/w20/${channel.country_code.toLowerCase()}.png` : '';
         const isFav = favorites.includes(channel.id);
@@ -714,7 +710,7 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
             </div>
         `;
 
-        card.onclick = () => openPlayer(channel, channels, index);
+        card.addEventListener('click', () => openPlayer(channel, channels, index));
         grid.appendChild(card);
     });
 

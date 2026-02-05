@@ -125,42 +125,44 @@
             </div>
         </div>
 
-        <!-- Touch Remote Screen (Phone Side) -->
-        <div id="remote-control-screen" class="hidden">
-            <div class="remote-header">
-                <span class="material-icons-round">settings_remote</span>
-                <h2>Allivision Remote</h2>
-            </div>
+    </div>
+    </div>
 
-            <div class="remote-grid">
-                <button class="remote-btn ch-plus" data-cmd="next">
-                    <span class="material-icons-round">add</span>
-                    <span>CH +</span>
-                </button>
-                <button class="remote-btn vol-plus" data-cmd="vol-up">
-                    <span class="material-icons-round">volume_up</span>
-                </button>
-                <button class="remote-btn ch-minus" data-cmd="prev">
-                    <span class="material-icons-round">remove</span>
-                    <span>CH -</span>
-                </button>
-                <button class="remote-btn vol-minus" data-cmd="vol-down">
-                    <span class="material-icons-round">volume_down</span>
-                </button>
-                <button class="remote-btn mute-btn" data-cmd="mute">
-                    <span class="material-icons-round">volume_off</span>
-                    <span>MUTE</span>
-                </button>
-                <button class="remote-btn power-btn" data-cmd="close">
-                    <span class="material-icons-round">power_settings_new</span>
-                    <span>SALIR</span>
-                </button>
-            </div>
-            <div class="remote-status-active">Conectado a la TV</div>
-            <button onclick="location.reload()"
-                style="background:none; border:none; color:var(--text-muted); font-size:0.7rem; margin-top:10px; cursor:pointer; text-decoration:underline;">Reconectar
-                / Refrescar</button>
+    <!-- Touch Remote Screen (Phone Side) -->
+    <div id="remote-control-screen" class="hidden">
+        <div class="remote-header">
+            <span class="material-icons-round">settings_remote</span>
+            <h2>Allivision Remote</h2>
         </div>
+
+        <div class="remote-grid">
+            <button class="remote-btn ch-plus" data-cmd="next">
+                <span class="material-icons-round">add</span>
+                <span>CH +</span>
+            </button>
+            <button class="remote-btn vol-plus" data-cmd="vol-up">
+                <span class="material-icons-round">volume_up</span>
+            </button>
+            <button class="remote-btn ch-minus" data-cmd="prev">
+                <span class="material-icons-round">remove</span>
+                <span>CH -</span>
+            </button>
+            <button class="remote-btn vol-minus" data-cmd="vol-down">
+                <span class="material-icons-round">volume_down</span>
+            </button>
+            <button class="remote-btn mute-btn" data-cmd="mute">
+                <span class="material-icons-round">volume_off</span>
+                <span>MUTE</span>
+            </button>
+            <button class="remote-btn power-btn" data-cmd="close">
+                <span class="material-icons-round">power_settings_new</span>
+                <span>SALIR</span>
+            </button>
+        </div>
+        <div class="remote-status-active" style="text-align: center; margin-top: 2rem;">Conectado a la TV</div>
+        <button onclick="location.reload()"
+            style="background:none; border:none; color:var(--text-muted); font-size:0.7rem; margin-top:10px; cursor:pointer; text-decoration:underline; width: 100%;">Reconectar
+            / Refrescar</button>
     </div>
 
     <script type="module" src="js/app.js"></script>
