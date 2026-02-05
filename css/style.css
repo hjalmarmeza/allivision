@@ -412,10 +412,40 @@ video {
 
     .top-bar {
         padding: 1rem;
+        gap: 10px;
+        flex-direction: row;
+        justify-content: space-between;
     }
 
     .search-box {
-        width: 100%;
+        flex: 1;
+        width: auto;
+    }
+
+    .mobile-only-btn {
+        display: flex !important;
+        background: rgba(0, 242, 255, 0.05) !important;
+        border: 1px solid var(--accent-primary) !important;
+        box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
+        animation: neon-pulse 2s infinite;
+        flex-direction: row !important;
+        align-items: center;
+        gap: 5px;
+        color: var(--accent-primary) !important;
+    }
+
+    @keyframes neon-pulse {
+        0% {
+            box-shadow: 0 0 5px rgba(0, 242, 255, 0.2);
+        }
+
+        50% {
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.5);
+        }
+
+        100% {
+            box-shadow: 0 0 5px rgba(0, 242, 255, 0.2);
+        }
     }
 
     .view-container {
