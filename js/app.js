@@ -649,39 +649,18 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
 
         // --- Smart Logo Logic ---
         let logoSrc = channel.logo;
-        let useFavicon = false;
+        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.name)}&background=1a1a2e&color=fff&size=128&length=2&font-size=0.5`;
 
-        // If no logo, try website favicon immediately
-        if (!logoSrc && channel.website) {
-            logoSrc = `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${channel.website}&size=128`;
-            useFavicon = true;
-        }
+        // Strategy: Use official logo if exists, otherwise generate a text avatar immediately.
+        // We avoid the favicon search unless we really have no other choice, to keep console clean.
+        let finalLogo = logoSrc || avatarUrl;
 
-        // Fallback Avatar (Text based)
-        // We use ui-avatars.com to generate a nice initial image
-        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.name)}&background=random&color=fff&size=128&length=2&font-size=0.5`;
-
-        let iconHtml;
-        if (logoSrc) {
-            // Logic: Try Logo -> Try Favicon (onError) -> Try Avatar (onError) -> Generic
-
-            // Constructing a smart onError chain
-            let fallbackChain = "";
-            if (!useFavicon && channel.website) {
-                // If official logo fails, try favicon
-                const fav = `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${channel.website}&size=128`;
-                fallbackChain = `this.onerror=null; this.src='${fav}'; this.onerror=function(){ this.src='${avatarUrl}'; };`;
-            } else {
-                // If already using favicon or no website, fall to avatar
-                fallbackChain = `this.onerror=null; this.src='${avatarUrl}';`;
-            }
-
-            iconHtml = `<img src="${logoSrc}" referrerpolicy="no-referrer" alt="${channel.name}" style="max-width: 100%; max-height: 100%; object-fit: contain; width: auto; height: auto;" 
-                         onerror="${fallbackChain}">`;
-        } else {
-            // No logo and no website -> Show Avatar immediately
-            iconHtml = `<img src="${avatarUrl}" alt="${channel.name}" style="max-width: 100%; max-height: 100%; object-fit: contain; width: auto; height: auto; border-radius: 50%;">`;
-        }
+        let iconHtml = `<img src="${finalLogo}" 
+                             loading="lazy" 
+                             referrerpolicy="no-referrer" 
+                             alt="${channel.name}" 
+                             style="max-width: 100%; max-height: 100%; object-fit: contain; width: auto; height: auto;" 
+                             onerror="this.onerror=null; this.src='${avatarUrl}';">`;
         // -------------------------
 
         const flagUrl = channel.country_code ? `https://flagcdn.com/w20/${channel.country_code.toLowerCase()}.png` : '';
