@@ -153,6 +153,14 @@ body {
     font-size: 0.95rem;
 }
 
+.search-box.focused {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 30px rgba(0, 242, 255, 0.6);
+    background: var(--bg-hover);
+    transform: translateY(-2px) scale(1.02);
+    z-index: 100;
+}
+
 /* View Container */
 .view-container {
     flex: 1;
@@ -687,4 +695,44 @@ video {
     background-color: transparent;
     transition: all 0.3s;
     z-index: 5;
+}
+
+/* Focus states for Remote Control */
+.channel-card.focused,
+.nav-item.focused,
+.category-card.focused,
+.language-card.focused {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 25px rgba(0, 242, 255, 0.4);
+    transform: scale(1.08);
+    z-index: 10;
+    background: var(--bg-hover) !important;
+}
+
+.nav-item.focused {
+    background: linear-gradient(90deg, rgba(0, 242, 255, 0.2), transparent) !important;
+    border-left: 4px solid var(--accent-primary) !important;
+    transform: translateX(10px);
+}
+
+/* Premium Animations */
+@keyframes pulse {
+    0% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.05);
+    }
+
+    100% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+}
+
+#tv-cursor {
+    transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }

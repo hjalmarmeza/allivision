@@ -34,6 +34,37 @@ let currentChannelIndex = -1;
 let peer = null;
 let conn = null;
 
+// --- Navigation Focus State ---
+let currentFocusScope = 'grid'; // 'sidebar' | 'grid' | 'search'
+let currentFocusIndex = 0;
+
+// --- Virtual Cursor State (Trackpad) ---
+let cursorEl = null;
+let cursorX = window.innerWidth / 2;
+let cursorY = window.innerHeight / 2;
+
+function initCursor() {
+    if (cursorEl) return;
+    cursorEl = document.createElement('div');
+    cursorEl.id = 'tv-cursor';
+    cursorEl.style.cssText = `
+        position: fixed;
+        width: 25px;
+        height: 25px;
+        background: radial-gradient(circle, var(--accent-primary, #00f2ff) 20%, transparent 80%);
+        border: 2px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 0 20px var(--accent-primary, #00f2ff);
+        pointer-events: none;
+        z-index: 10000;
+        display: none;
+        transition: transform 0.05s linear;
+        left: 0;
+        top: 0;
+    `;
+    document.body.appendChild(cursorEl);
+}
+
 // --- Broken Channel Logic ---
 function markAsBroken(id) {
     if (!brokenChannels.includes(id)) {
@@ -168,6 +199,15 @@ function openPlayer(channel, list = [], index = -1) {
 
     // Reset Timeout
     clearTimeout(playTimeoutTimer);
+
+    // Update Remote if connected
+    if (conn && conn.open) {
+        conn.send({
+            type: 'playing',
+            name: channel.name,
+            logo: channel.logo || `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.name)}&background=1a1a2e&color=fff&size=128`
+        });
+    }
 
     // Clear error
     let errorMsg = document.getElementById('player-error-msg');
@@ -334,6 +374,11 @@ function closePlayer() {
     if (existingPip) existingPip.remove();
     const existingCC = document.getElementById('cc-btn');
     if (existingCC) existingCC.remove();
+
+    // Reset Remote State
+    if (conn && conn.open) {
+        conn.send({ type: 'playing', name: null });
+    }
 }
 
 async function init() {
@@ -394,7 +439,19 @@ async function init() {
     // Global Keyboard Integration (Remote Control Feel)
     document.addEventListener('keydown', (e) => {
         const overlay = document.getElementById('player-overlay');
-        if (overlay.classList.contains('hidden')) return;
+        const isPlayerOpen = !overlay.classList.contains('hidden');
+
+        if (!isPlayerOpen) {
+            if (e.key.startsWith('Arrow')) {
+                const dir = e.key.replace('Arrow', '').toLowerCase();
+                moveFocus(dir);
+                e.preventDefault();
+            } else if (e.key === 'Enter') {
+                const focused = document.querySelector('.focused');
+                if (focused) focused.click();
+            }
+            return;
+        }
 
         if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
             zapNext();
@@ -404,6 +461,7 @@ async function init() {
             closePlayer();
         }
     });
+
 }
 
 // --- Remote Control System (Peer-to-Peer) ---
@@ -442,6 +500,9 @@ function initTVReceiver() {
         document.getElementById('pairing-status').textContent = "¡Mando conectado!";
         document.getElementById('pairing-status').style.color = "#00ff88";
 
+        // AUTO-LOAD SPANISH CHANNELS FOR ZAPPING
+        loadView('spanish_auto');
+
         setTimeout(() => {
             document.getElementById('pairing-modal').classList.add('hidden');
             showToast("Control remoto vinculado.");
@@ -466,33 +527,65 @@ function initRemoteControl(pairId) {
     const style = document.createElement('style');
     style.textContent = `
         body { background: #050510 !important; color: white !important; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; padding: 0; height: 100vh; width: 100vw; }
-        .rem-container { display: flex; flex-direction: column; height: 100dvh; padding: 15px; box-sizing: border-box; justify-content: space-between; gap: 10px; }
-        .rem-header { text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
-        .rem-status { font-size: 0.75rem; transition: all 0.3s; color: #8b8b9e; }
+        .rem-container { display: flex; flex-direction: column; height: 100dvh; padding: 15px; box-sizing: border-box; justify-content: flex-start; gap: 12px; }
+        .rem-header { text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .rem-status { font-size: 0.7rem; transition: all 0.3s; color: #8b8b9e; }
         .rem-status.online { color: #00f2ff; text-shadow: 0 0 10px rgba(0,242,255,0.5); }
         
-        .d-pad-container { position: relative; width: 220px; height: 220px; margin: 0 auto; background: #0f0f1a; border-radius: 50%; border: 2px solid #1a1a2e; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
-        .d-btn { position: absolute; background: #1a1a2e; border: 1px solid #2a2a4e; color: white; border-radius: 12px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; active-transform: scale(0.9); transition: all 0.1s; }
-        .d-btn:active { background: #00f2ff; color: #050510; }
-        .d-btn.up { top: 10px; } .d-btn.down { bottom: 10px; } .d-btn.left { left: 10px; } .d-btn.right { right: 10px; }
-        .d-ok { background: var(--accent-secondary, #7000ff); width: 70px; height: 70px; border-radius: 50%; font-weight: bold; border: none; box-shadow: 0 0 20px rgba(112,0,255,0.4); }
+        /* Now Playing Card */
+        .now-playing-card { background: linear-gradient(135deg, #1a1a2e, #0f0f1a); border: 1px solid rgba(0, 242, 255, 0.2); border-radius: 16px; padding: 12px; display: flex; align-items: center; gap: 15px; margin-bottom: 5px; min-height: 60px; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0; transform: translateY(-10px); }
+        .now-playing-card.active { opacity: 1; transform: translateY(0); }
+        .playing-logo { width: 45px; height: 45px; border-radius: 8px; object-fit: contain; background: #fff; padding: 4px; }
+        .playing-info { flex: 1; }
+        .playing-info h4 { margin: 0; font-size: 0.9rem; color: #fff; }
+        .playing-info p { margin: 2px 0 0; font-size: 0.7rem; color: var(--accent-primary, #00f2ff); font-weight: bold; }
+
+        /* Search Input */
+        .rem-search-container { position: relative; width: 100%; }
+        .rem-search-input { width: 100%; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 30px; padding: 12px 20px 12px 45px; color: white; font-size: 1rem; outline: none; transition: border-color 0.3s; }
+        .rem-search-input:focus { border-color: #00f2ff; box-shadow: 0 0 15px rgba(0, 242, 255, 0.2); }
+        .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #8b8b9e; font-size: 1.2rem; }
+
+        .d-pad-container { position: relative; width: 200px; height: 200px; margin: 5px auto; background: #0f0f1a; border-radius: 50%; border: 2px solid #1a1a2e; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+        .pad-container { display: none; width: 100%; height: 200px; background: #0f0f1a; border-radius: 24px; border: 2px dashed #2a2a4e; position: relative; touch-action: none; overflow: hidden; }
+        .pad-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #2a2a4e; text-transform: uppercase; letter-spacing: 2px; font-weight: 900; pointer-events: none; }
         
-        .grid-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .ctrl-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 15px; padding: 15px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 0.9rem; -webkit-tap-highlight-color: transparent; }
+        .d-btn { position: absolute; background: #1a1a2e; border: 1px solid #2a2a4e; color: white; border-radius: 12px; width: 55px; height: 55px; display: flex; align-items: center; justify-content: center; transition: all 0.1s; }
+        .d-btn:active { background: #00f2ff; color: #050510; }
+        .d-btn.up { top: 5px; } .d-btn.down { bottom: 5px; } .d-btn.left { left: 5px; } .d-btn.right { right: 5px; }
+        .d-ok { background: #7000ff; width: 65px; height: 65px; border-radius: 50%; font-weight: bold; border: none; box-shadow: 0 0 20px rgba(112,0,255,0.4); }
+        
+        .grid-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; }
+        .ctrl-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 0.85rem; -webkit-tap-highlight-color: transparent; }
         .ctrl-btn:active { background: #2a2a4e; transform: scale(0.96); }
-        .ctrl-btn .material-icons-round { font-size: 1.5rem; }
+        .ctrl-btn .material-icons-round { font-size: 1.3rem; }
         .exit-btn { border-color: #ff4757; color: #ff4757; background: rgba(255,71,87,0.05); }
+        .mode-btn { border-color: #00f2ff; color: #00f2ff; grid-column: 1 / -1; height: 45px; }
     `;
     document.head.appendChild(style);
 
     const ui = `
         <div class="rem-container">
             <div class="rem-header">
-                <div style="font-weight: 900; letter-spacing: 2px; color: #00f2ff;">ALLIVISION</div>
-                <div id="rem-status" class="rem-status">Estableciendo enlace...</div>
+                <div style="font-weight: 900; letter-spacing: 2px; color: #00f2ff; font-size:0.8rem;">ALLIVISION</div>
+                <div id="rem-status" class="rem-status">CONECTANDO...</div>
             </div>
 
-            <div class="d-pad-container">
+            <div id="now-playing" class="now-playing-card">
+                <img src="" class="playing-logo" id="playing-logo" onerror="this.src='https://via.placeholder.com/50'">
+                <div class="playing-info">
+                    <h4 id="playing-name">Ninguna señal</h4>
+                    <p>EN VIVO</p>
+                </div>
+                <span class="material-icons-round" style="color:#00f2ff; animation: pulse 2s infinite;">sensors</span>
+            </div>
+
+            <div class="rem-search-container">
+                <span class="material-icons-round search-icon">search</span>
+                <input type="text" class="rem-search-input" id="rem-search" placeholder="Buscar en la TV...">
+            </div>
+
+            <div id="dpad-view" class="d-pad-container">
                 <button class="d-btn up" onclick="sendCmd('up')"><span class="material-icons-round">keyboard_arrow_up</span></button>
                 <button class="d-btn down" onclick="sendCmd('down')"><span class="material-icons-round">keyboard_arrow_down</span></button>
                 <button class="d-btn left" onclick="sendCmd('left')"><span class="material-icons-round">keyboard_arrow_left</span></button>
@@ -500,7 +593,15 @@ function initRemoteControl(pairId) {
                 <button class="d-btn d-ok" onclick="sendCmd('enter')">OK</button>
             </div>
 
+            <div id="pad-view" class="pad-container">
+                <div class="pad-label">Trackpad</div>
+            </div>
+
             <div class="grid-controls">
+                <button class="ctrl-btn mode-btn" onclick="toggleMode()">
+                    <span class="material-icons-round" id="mode-icon">mouse</span> 
+                    <span id="mode-text">Usar Trackpad</span>
+                </button>
                 <button class="ctrl-btn" onclick="sendCmd('vol-up')"><span class="material-icons-round">volume_up</span> VOL+</button>
                 <button class="ctrl-btn" onclick="sendCmd('next')"><span class="material-icons-round">skip_next</span> CH+</button>
                 <button class="ctrl-btn" onclick="sendCmd('vol-down')"><span class="material-icons-round">volume_down</span> VOL-</button>
@@ -509,44 +610,160 @@ function initRemoteControl(pairId) {
                 <button class="ctrl-btn exit-btn" onclick="sendCmd('close')"><span class="material-icons-round">power_settings_new</span> SALIR</button>
             </div>
             
-            <div style="text-align:center;">
+            <div style="text-align:center; padding-top: 5px;">
                 <button onclick="location.reload()" style="background:none; border:none; color:gray; font-size:0.6rem; text-decoration:underline;">Reiniciar Mando</button>
             </div>
         </div>
     `;
     document.body.innerHTML = ui;
 
+    let usePad = false;
+    window.toggleMode = () => {
+        usePad = !usePad;
+        document.getElementById('dpad-view').style.display = usePad ? 'none' : 'flex';
+        document.getElementById('pad-view').style.display = usePad ? 'block' : 'none';
+        document.getElementById('mode-text').textContent = usePad ? 'Usar Cruceta' : 'Usar Trackpad';
+        document.getElementById('mode-icon').textContent = usePad ? 'reorder' : 'mouse';
+        if (navigator.vibrate) navigator.vibrate(50);
+    };
+
     const peerObj = new Peer();
     peerObj.on('open', () => {
         const connObj = peerObj.connect(`alli-${pairId}`, { reliable: true });
+
         window.sendCmd = (c) => {
             if (connObj.open) {
                 connObj.send(c);
                 if (navigator.vibrate) navigator.vibrate(35);
             }
         };
+
+        // Search Input Handling
+        const searchInput = document.getElementById('rem-search');
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (connObj.open) {
+                    connObj.send({ type: 'search', query: e.target.value });
+                }
+            }, 500);
+        });
+
+        // Trackpad Touch Events
+        const pad = document.getElementById('pad-view');
+        let lastX = 0; let lastY = 0;
+        let moved = false;
+
+        pad.addEventListener('touchstart', (e) => {
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+            moved = false;
+        });
+
+        pad.addEventListener('touchmove', (e) => {
+            const dx = e.touches[0].clientX - lastX;
+            const dy = e.touches[0].clientY - lastY;
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+            moved = true;
+            if (connObj.open) connObj.send({ type: 'move', dx, dy });
+        });
+
+        pad.addEventListener('touchend', (e) => {
+            if (!moved && connObj.open) {
+                connObj.send({ type: 'click' });
+                if (navigator.vibrate) navigator.vibrate(40);
+            }
+        });
+
         connObj.on('open', () => {
             const st = document.getElementById('rem-status');
             st.textContent = "CONECTADO";
             st.classList.add('online');
+        });
+
+        // Receive data from TV (Now Playing, etc)
+        connObj.on('data', (data) => {
+            if (data.type === 'playing') {
+                const card = document.getElementById('now-playing');
+                const name = document.getElementById('playing-name');
+                const logo = document.getElementById('playing-logo');
+
+                if (data.name) {
+                    name.textContent = data.name;
+                    logo.src = data.logo;
+                    card.classList.add('active');
+                } else {
+                    card.classList.remove('active');
+                }
+            } else if (data.type === 'focus-search') {
+                document.getElementById('rem-search').focus();
+                if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+            }
         });
     });
 }
 
 function handleRemoteCommand(cmd) {
     console.log("Remote Command received:", cmd);
+
+    // Handle Object-based commands (Trackpad)
+    if (typeof cmd === 'object') {
+        initCursor();
+        cursorEl.style.display = 'block';
+
+        if (cmd.type === 'move') {
+            cursorX += cmd.dx * 1.5; // Sensitivity
+            cursorY += cmd.dy * 1.5;
+
+            // Constrain to screen
+            cursorX = Math.max(0, Math.min(window.innerWidth, cursorX));
+            cursorY = Math.max(0, Math.min(window.innerHeight, cursorY));
+
+            cursorEl.style.transform = `translate(${cursorX - 12}px, ${cursorY - 12}px)`;
+
+            // Visual feedback: find element under cursor
+            const target = document.elementFromPoint(cursorX, cursorY);
+            if (target) {
+                const card = target.closest('.channel-card, .nav-item, .category-card, .close-btn, .search-box');
+                document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
+                if (card) card.classList.add('focused');
+            }
+        } else if (cmd.type === 'click') {
+            const target = document.elementFromPoint(cursorX, cursorY);
+            if (target) target.click();
+        } else if (cmd.type === 'search') {
+            const input = document.getElementById('search-input');
+            if (input) {
+                input.value = cmd.query;
+                handleSearch(cmd.query);
+                // Also visually focus the search box
+                currentFocusScope = 'search';
+                applyFocus();
+            }
+        }
+        return;
+    }
+
     const video = document.getElementById('video');
     const isPlayerOpen = !document.getElementById('player-overlay').classList.contains('hidden');
 
+    // Hide cursor if using D-Pad
+    if (cursorEl) cursorEl.style.display = 'none';
+
     // Navigation Mapping
     if (!isPlayerOpen) {
-        // If player is NOT open, we navigate the list
-        if (cmd === 'up') window.scrollBy({ top: -300, behavior: 'smooth' });
-        if (cmd === 'down') window.scrollBy({ top: 300, behavior: 'smooth' });
+        if (['up', 'down', 'left', 'right'].includes(cmd)) {
+            moveFocus(cmd);
+            return;
+        }
         if (cmd === 'enter') {
-            // Click the center-most card
-            const centerCard = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2).closest('.channel-card');
-            if (centerCard) centerCard.click();
+            const focused = document.querySelector('.focused');
+            if (focused) {
+                focused.click();
+                return;
+            }
         }
     }
 
@@ -557,9 +774,127 @@ function handleRemoteCommand(cmd) {
         case 'vol-down': if (video.volume > 0.1) video.volume -= 0.1; break;
         case 'mute': video.muted = !video.muted; break;
         case 'close': closePlayer(); break;
-        case 'left': if (isPlayerOpen) closePlayer(); break;
+        case 'left': if (isPlayerOpen) { closePlayer(); } else { moveFocus('left'); } break;
+        case 'right': if (!isPlayerOpen) moveFocus('right'); break;
+        case 'up': if (isPlayerOpen) zapNext(); else moveFocus('up'); break;
+        case 'down': if (isPlayerOpen) zapPrev(); else moveFocus('down'); break;
+        case 'enter': if (!isPlayerOpen) { const f = document.querySelector('.focused'); if (f) f.click(); } break;
     }
 }
+
+function moveFocus(dir) {
+    const sidebarItems = Array.from(document.querySelectorAll('.nav-item'));
+    const gridItems = Array.from(document.querySelectorAll('.channel-card, .category-card, .language-card, .country-card'));
+    const searchInput = document.querySelector('.search-box');
+
+    // Clear current focus
+    document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
+
+    if (currentFocusScope === 'search') {
+        if (dir === 'down') {
+            currentFocusScope = 'grid';
+            currentFocusIndex = 0;
+        } else if (dir === 'left') {
+            currentFocusScope = 'sidebar';
+            currentFocusIndex = 0;
+        }
+    } else if (currentFocusScope === 'sidebar') {
+        if (dir === 'up') {
+            if (currentFocusIndex === 0) {
+                currentFocusScope = 'search';
+            } else {
+                currentFocusIndex = Math.max(0, currentFocusIndex - 1);
+            }
+        } else if (dir === 'down') {
+            currentFocusIndex = Math.min(sidebarItems.length - 1, currentFocusIndex + 1);
+        } else if (dir === 'right' || dir === 'enter') {
+            if (gridItems.length > 0) {
+                currentFocusScope = 'grid';
+                currentFocusIndex = 0;
+            }
+        }
+    } else {
+        // Grid Navigation Logic
+        const container = document.getElementById('view-container');
+        const grid = container.querySelector('.grid-channels, .grid-categories, .grid-languages, .grid-countries') || container;
+
+        // Dynamic Column Calculation
+        const firstItem = gridItems[0];
+        let cols = 1;
+        if (firstItem && gridItems.length > 1) {
+            const firstRect = firstItem.getBoundingClientRect();
+            const secondItem = gridItems[1];
+            const secondRect = secondItem.getBoundingClientRect();
+
+            if (secondRect.top === firstRect.top) {
+                // Find how many are in the same row
+                cols = 0;
+                for (let i = 0; i < gridItems.length; i++) {
+                    if (gridItems[i].getBoundingClientRect().top === firstRect.top) cols++;
+                    else break;
+                }
+            }
+        }
+
+        if (dir === 'left') {
+            if (currentFocusIndex % cols === 0) {
+                currentFocusScope = 'sidebar';
+                currentFocusIndex = 0;
+            } else {
+                currentFocusIndex = Math.max(0, currentFocusIndex - 1);
+            }
+        } else if (dir === 'right') {
+            currentFocusIndex = Math.min(gridItems.length - 1, currentFocusIndex + 1);
+        } else if (dir === 'up') {
+            if (currentFocusIndex < cols) {
+                currentFocusScope = 'search';
+            } else {
+                currentFocusIndex -= cols;
+            }
+        } else if (dir === 'down') {
+            if (currentFocusIndex + cols < gridItems.length) {
+                currentFocusIndex += cols;
+            } else {
+                if (currentFocusIndex < gridItems.length - 1) currentFocusIndex = gridItems.length - 1;
+            }
+        }
+    }
+
+    applyFocus();
+}
+
+function applyFocus() {
+    // Search Box Focus
+    if (currentFocusScope === 'search') {
+        const searchBox = document.querySelector('.search-box');
+        const input = document.getElementById('search-input');
+        if (searchBox) {
+            searchBox.classList.add('focused');
+            if (input) input.focus();
+            searchBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Signal remote to open keyboard if connected
+            if (conn && conn.open) {
+                conn.send({ type: 'focus-search' });
+            }
+        }
+        return;
+    } else {
+        // Blur search if not in scope
+        const input = document.getElementById('search-input');
+        if (input) input.blur();
+    }
+
+    const items = currentFocusScope === 'sidebar'
+        ? Array.from(document.querySelectorAll('.nav-item'))
+        : Array.from(document.querySelectorAll('.channel-card, .category-card, .language-card, .country-card'));
+
+    if (items[currentFocusIndex]) {
+        const target = items[currentFocusIndex];
+        target.classList.add('focused');
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
 function zapNext() {
     if (currentChannelList.length === 0) return;
     currentChannelIndex++;
@@ -581,6 +916,9 @@ function zapPrev() {
 async function loadView(viewName) {
     const container = document.getElementById('view-container');
     container.innerHTML = '<div class="hero-section"><p>Cargando señal del mundo...</p></div>';
+
+    // Reset Navigation Index
+    currentFocusIndex = 0;
 
     try {
         if (viewName === 'home') {
@@ -608,6 +946,14 @@ async function loadView(viewName) {
                 const favChannels = await getChannelsByFilter('id_list', favorites);
                 renderChannelGrid(favChannels, 'Tus Canales Favoritos');
             }
+        } else if (viewName === 'spanish_auto') {
+            const channels = await getChannelsByFilter('language', 'Español');
+            renderChannelGrid(channels, 'Zapping: Canales en Español');
+            // We set the list so the remote can zap, but we don't open the player automatically
+            // to avoid being intrusive, but it's ready for CH+ / CH- / OK.
+            currentChannelList = channels;
+            currentChannelIndex = -1;
+            showToast("Lista en Español cargada para navegación.");
         }
     } catch (e) {
         console.error("View Error", e);
@@ -770,7 +1116,11 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
             </div>
         `;
 
-        card.addEventListener('click', () => openPlayer(channel, channels, index));
+        card.addEventListener('click', () => {
+            currentFocusScope = 'grid';
+            currentFocusIndex = index;
+            openPlayer(channel, channels, index);
+        });
         grid.appendChild(card);
     });
 
