@@ -314,12 +314,16 @@ function openPlayer(channel, list = [], index = -1) {
             const attemptPlay = () => {
                 const playPromise = video.play();
                 if (playPromise !== undefined) {
-                    playPromise.catch(error => {
+                    playPromise.then(() => {
+                        // Success! Hide any play prompt
+                        const prompt = document.getElementById('play-prompt-overlay');
+                        if (prompt) prompt.remove();
+                    }).catch(error => {
                         console.log("Autoplay blocked, trying muted...");
                         video.muted = true;
                         video.play().catch(e => {
                             console.error("Playback still blocked", e);
-                            showToast("Pulsa OK para reproducir");
+                            showManualPlayPrompt();
                         });
                     });
                 }
@@ -431,6 +435,31 @@ function openPlayer(channel, list = [], index = -1) {
     }
 }
 
+// Helper for manual play blocked by browser
+function showManualPlayPrompt() {
+    if (document.getElementById('play-prompt-overlay')) return;
+    const container = document.querySelector('.video-wrapper');
+    const div = document.createElement('div');
+    div.id = 'play-prompt-overlay';
+    div.style.cssText = `
+        position: absolute; top:0; left:0; width:100%; height:100%;
+        background: rgba(0,0,0,0.6); display:flex; flex-direction:column;
+        align-items:center; justify-content:center; z-index: 100;
+        cursor: pointer; backdrop-filter: blur(5px);
+    `;
+    div.innerHTML = `
+        <div style="background:var(--accent-primary); width:80px; height:80px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow: 0 0 30px var(--accent-primary);">
+            <span class="material-icons-round" style="font-size: 50px; color: var(--bg-dark); margin-left: 5px;">play_arrow</span>
+        </div>
+        <p style="margin-top: 20px; font-weight: bold; font-size: 1.2rem; color: #fff;">Presiona OK para reproducir</p>
+    `;
+    div.onclick = () => {
+        const v = document.getElementById('video');
+        if (v) v.play().then(() => div.remove());
+    };
+    container.appendChild(div);
+}
+
 function showPlayerError(msg, isFatal = false, channelId = null) {
     if (isFatal && channelId) {
         markAsBroken(channelId);
@@ -492,8 +521,7 @@ function closePlayer() {
     video.removeAttribute('src');
     video.load();
 
-    const newVideo = video.cloneNode(true);
-    video.parentNode.replaceChild(newVideo, video);
+    // Removed cloneNode to preserve user-gesture 'blessing' on the video element
 
     const header = document.querySelector('.player-header');
     const existingPip = document.getElementById('pip-btn');
@@ -604,6 +632,15 @@ async function init() {
         }
     });
 
+    // GLOBAL USER INTERACTION BLESSING
+    document.addEventListener('click', () => {
+        const v = document.getElementById('video');
+        if (v) {
+            // "Bless" the video element so it can be controlled by PeerJS commands
+            v.play().then(() => v.pause()).catch(() => { });
+            console.log("Video element 'blessed' by user interaction.");
+        }
+    }, { once: true });
 }
 
 // --- Remote Control System (Peer-to-Peer) ---
@@ -969,8 +1006,18 @@ function handleRemoteCommand(cmd) {
         case 'down': if (isPlayerOpen) zapPrev(); else moveFocus('down'); break;
         case 'enter':
             if (isPlayerOpen) {
-                video.play();
-                showToast("Reproduciendo...");
+                video.muted = false; // Attempt to un-mute on OK
+                video.play().then(() => {
+                    showToast("Reproduciendo...");
+                    // Also hide error if it was visible
+                    const err = document.getElementById('player-error-msg');
+                    if (err) err.remove();
+                    const prompt = document.getElementById('play-prompt-overlay');
+                    if (prompt) prompt.remove();
+                }).catch(e => {
+                    console.error("Manual play failed:", e);
+                    showToast("Error de reproducción. Intenta de nuevo.");
+                });
             } else {
                 const f = document.querySelector('.focused');
                 if (f) f.click();
@@ -1213,7 +1260,8 @@ async function loadView(viewName) {
                 currentChannelList = channels;
                 currentChannelIndex = 0;
                 showToast("Sintonizando TV en Español...");
-                setTimeout(() => openPlayer(channels[0], channels, 0), 500);
+                // Pass full context to openPlayer
+                setTimeout(() => openPlayer(channels[0], channels, 0), 800);
             }
         } else if (viewName === 'english_auto') {
             const channels = await getChannelsByFilter('language', 'Inglés');
@@ -1223,7 +1271,8 @@ async function loadView(viewName) {
                 currentChannelList = channels;
                 currentChannelIndex = 0;
                 showToast("Sintonizando TV en Inglés...");
-                setTimeout(() => openPlayer(channels[0], channels, 0), 500);
+                // Pass full context to openPlayer
+                setTimeout(() => openPlayer(channels[0], channels, 0), 800);
             }
         }
     } catch (e) {
