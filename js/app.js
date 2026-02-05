@@ -406,16 +406,18 @@ async function init() {
 // --- Remote Control System (Peer-to-Peer) ---
 
 function initTVReceiver() {
-    if (peer) return; // Already init
+    if (peer) return;
 
-    // Create a 4-digit ID
+    // Simplified ID for better discovery
     const simpleId = Math.floor(1000 + Math.random() * 9000).toString();
-    const fullPeerId = `allivision-${simpleId}`;
+    const fullId = `alli-${simpleId}`; // Even shorter ID
 
-    console.log("Starting TV Receiver with ID:", fullPeerId);
-    peer = new Peer(fullPeerId);
+    peer = new Peer(fullId, {
+        debug: 1
+    });
 
     peer.on('open', (id) => {
+        console.log("TV ID Open:", id);
         document.getElementById('pair-code-display').textContent = simpleId;
 
         const remoteUrl = `${window.location.origin}${window.location.pathname}?pair=${simpleId}`;
@@ -423,10 +425,9 @@ function initTVReceiver() {
         qrContainer.innerHTML = "";
         new QRCode(qrContainer, {
             text: remoteUrl,
-            width: 200, height: 200,
-            colorDark: "#050510",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
+            width: 180, height: 180,
+            colorDark: "#000000",
+            colorLight: "#ffffff"
         });
     });
 
@@ -456,43 +457,43 @@ function initTVReceiver() {
 }
 
 function initRemoteControl(pairId) {
-    console.log("Starting Remote Control for TV ID:", pairId);
+    document.body.innerHTML = ""; // Full clear for mobile stability
+    document.body.style.background = "#050510";
 
-    // Hide App UI
-    const appContainer = document.querySelector('.app-container');
-    if (appContainer) appContainer.style.display = 'none';
+    const remoteUI = `
+        <div id="remote-control-screen" style="display:flex; flex-direction:column; height:100vh; padding:2rem;">
+            <div style="text-align:center; margin-bottom:20px;">
+                <h2 style="color:white; font-family:sans-serif;">Allivision Remote</h2>
+                <div id="rem-status" style="color:#8b8b9e; font-size:0.8rem;">Conectando...</div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; flex:1;">
+                <button class="r-btn" data-cmd="next" style="grid-row: span 2; background:#1a1a2e; border:1px solid #00f2ff; border-radius:20px; color:white; font-size:1.5rem;">CH +</button>
+                <button class="r-btn" data-cmd="vol-up" style="background:#1a1a2e; border:1px solid #333; border-radius:20px; color:white;">VOL +</button>
+                <button class="r-btn" data-cmd="vol-down" style="background:#1a1a2e; border:1px solid #333; border-radius:20px; color:white;">VOL -</button>
+                <button class="r-btn" data-cmd="prev" style="grid-row: span 2; background:#1a1a2e; border:1px solid #00f2ff; border-radius:20px; color:white; font-size:1.5rem;">CH -</button>
+                <button class="r-btn" data-cmd="mute" style="background:#1a1a2e; border:1px solid #f1c40f; color:#f1c40f; border-radius:20px;">MUTE</button>
+                <button class="r-btn" data-cmd="close" style="background:#1a1a2e; border:1px solid #ff4757; color:#ff4757; border-radius:20px;">SALIR</button>
+            </div>
+        </div>
+    `;
+    document.body.innerHTML = remoteUI;
 
-    const remoteScreen = document.getElementById('remote-control-screen');
-    remoteScreen.classList.remove('hidden');
+    const status = document.getElementById('rem-status');
+    const p = new Peer();
 
-    const statusText = remoteScreen.querySelector('.remote-status-active');
-    statusText.textContent = "Buscando televisor...";
-
-    peer = new Peer();
-    peer.on('open', () => {
-        const connection = peer.connect(`allivision-${pairId}`, { reliable: true });
-
-        connection.on('open', () => {
-            statusText.textContent = "● Conectado a la TV";
-            statusText.style.color = "#00ff88";
-
-            document.querySelectorAll('.remote-btn').forEach(btn => {
-                btn.onclick = () => {
-                    connection.send(btn.dataset.cmd);
-                    if (navigator.vibrate) navigator.vibrate(40);
+    p.on('open', () => {
+        const c = p.connect(`alli-${pairId}`, { reliable: true });
+        c.on('open', () => {
+            status.textContent = "● Mando Conectado";
+            status.style.color = "#00ff88";
+            document.querySelectorAll('.r-btn').forEach(b => {
+                b.onclick = () => {
+                    c.send(b.dataset.cmd);
+                    if (navigator.vibrate) navigator.vibrate(30);
                 };
             });
         });
-
-        connection.on('close', () => {
-            statusText.textContent = "Conexión perdida. Pulsa Reconectar.";
-            statusText.style.color = "#ff4757";
-        });
-    });
-
-    peer.on('error', (err) => {
-        console.error("PeerJS Remote Error:", err);
-        statusText.textContent = "Error de conexión.";
+        c.on('error', () => { status.textContent = "Error de enlace"; });
     });
 }
 
@@ -682,6 +683,15 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
 
         // --- Smart Logo Logic ---
         let logoSrc = channel.logo;
+
+        // Use official logo OR favicon from website
+        if (!logoSrc && channel.website) {
+            try {
+                const domain = new URL(channel.website).hostname;
+                logoSrc = `https://www.google.com/s2/favicons?sz=128&domain=${domain}`;
+            } catch (e) { }
+        }
+
         const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.name)}&background=1a1a2e&color=fff&size=128&length=2&font-size=0.5`;
         let finalLogo = logoSrc || avatarUrl;
 
