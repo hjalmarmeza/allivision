@@ -251,6 +251,13 @@ function openPlayer(channel, list = [], index = -1) {
     title.textContent = channel.name;
     overlay.classList.remove('hidden');
 
+    // Intentar Pantalla Completa (Requiere que el usuario haya interactuado con la página previamente)
+    try {
+        if (!document.fullscreenElement) {
+            overlay.requestFullscreen().catch(e => console.warn("Fullscreen bloqueado por el navegador. Requiere interacción previa en la TV."));
+        }
+    } catch (e) { }
+
     // Set Safety Timeout (15 seconds)
     playTimeoutTimer = setTimeout(() => {
         console.warn("Channel load timeout triggered");
@@ -294,16 +301,25 @@ function openPlayer(channel, list = [], index = -1) {
             console.log("HLS Manifest Parsed - Video starting...");
             clearTimeout(playTimeoutTimer);
 
-            // Try playing
-            const playPromise = video.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(error => {
-                    console.log("Autoplay prevented, trying muted...", error);
-                    video.muted = true;
-                    video.play().catch(e => console.error("Final playback block", e));
-                    showToast("Silenciado para iniciar reproducción");
-                });
-            }
+            // Force play attempt
+            const attemptPlay = () => {
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log("Autoplay blocked, trying muted...");
+                        video.muted = true;
+                        video.play().catch(e => {
+                            console.error("Playback still blocked", e);
+                            showToast("Pulsa OK para reproducir");
+                        });
+                    });
+                }
+            };
+
+            attemptPlay();
+
+            // Second attempt after a short delay just in case
+            setTimeout(attemptPlay, 1000);
         });
 
         // AUTO-HIDE ERROR: If video actually starts playing, remove any error overlay
@@ -345,11 +361,18 @@ function openPlayer(channel, list = [], index = -1) {
         video.src = channel.url;
         video.addEventListener('loadedmetadata', function () {
             clearTimeout(playTimeoutTimer);
-            if (video.textTracks && video.textTracks.length > 0) {
-                ccBtn.style.display = 'inline-block';
-                ccBtn.onclick = () => { video.controls = true; };
-            }
-            video.play();
+
+            const attemptPlay = () => {
+                video.play().catch(e => {
+                    video.muted = true;
+                    video.play().catch(err => {
+                        showToast("Pulsa OK para reproducir");
+                    });
+                });
+            };
+
+            attemptPlay();
+            setTimeout(attemptPlay, 1000);
         });
         video.addEventListener('error', function () {
             clearTimeout(playTimeoutTimer);
@@ -408,6 +431,12 @@ function closePlayer() {
     }
 
     overlay.classList.add('hidden');
+
+    try {
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(e => { });
+        }
+    } catch (e) { }
 
     video.pause();
     video.removeAttribute('src');
@@ -487,6 +516,7 @@ async function init() {
     document.addEventListener('keydown', (e) => {
         const overlay = document.getElementById('player-overlay');
         const isPlayerOpen = !overlay.classList.contains('hidden');
+        const video = document.getElementById('video');
 
         if (!isPlayerOpen) {
             if (e.key.startsWith('Arrow')) {
@@ -500,12 +530,25 @@ async function init() {
             return;
         }
 
-        if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+        // Keys when player is open
+        if (e.key === 'ArrowUp') {
             zapNext();
-        } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+        } else if (e.key === 'ArrowDown') {
             zapPrev();
         } else if (e.key === 'Escape') {
             closePlayer();
+        } else if (e.key === 'Enter') {
+            video.play();
+            showToast("Reproduciendo...");
+        } else if (e.key === ' ') {
+            e.preventDefault(); // Prevent scroll
+            if (video.paused) {
+                video.play();
+                showToast("Reproduciendo");
+            } else {
+                video.pause();
+                showToast("Pausa");
+            }
         }
     });
 
@@ -677,6 +720,10 @@ function initRemoteControl(pairId) {
             <!-- Extras Tab -->
             <div id="tab-extras" class="rem-content">
                 <div class="extras-grid">
+                    <button class="extra-btn" onclick="sendCmd('spanish-tv')" style="grid-column: span 2; background: linear-gradient(135deg, #7000ff, #00f2ff); color: #050510;">
+                        <span class="material-icons-round" style="color: #050510;">tv</span>
+                        <b>VER TV EN ESPAÑOL</b>
+                    </button>
                     <button class="extra-btn" onclick="sendCmd('ambient')"><span class="material-icons-round">landscape</span>Ambiente</button>
                     <button class="extra-btn" onclick="sendCmd('mosaic')"><span class="material-icons-round">grid_view</span>Mosaico</button>
                     <button class="extra-btn" onclick="sendCmd('sleep-30')"><span class="material-icons-round">snooze</span>Dormir 30'</button>
@@ -815,18 +862,34 @@ function handleRemoteCommand(cmd) {
     switch (cmd) {
         case 'next': zapNext(); break;
         case 'prev': zapPrev(); break;
-        case 'vol-up': if (video.volume < 0.9) video.volume += 0.1; showToast(`Volumen: ${Math.round(video.volume * 100)}%`); break;
-        case 'vol-down': if (video.volume > 0.1) video.volume -= 0.1; showToast(`Volumen: ${Math.round(video.volume * 100)}%`); break;
+        case 'vol-up':
+            if (video.volume < 0.9) video.volume += 0.1;
+            video.muted = false;
+            showToast(`Volumen: ${Math.round(video.volume * 100)}%`);
+            break;
+        case 'vol-down':
+            if (video.volume > 0.1) video.volume -= 0.1;
+            showToast(`Volumen: ${Math.round(video.volume * 100)}%`);
+            break;
         case 'mute': video.muted = !video.muted; showToast(video.muted ? "Silenciado" : "Sonido activado"); break;
         case 'close': closePlayer(); break;
         case 'ambient': toggleAmbientMode(); break;
         case 'mosaic': loadView('home'); showToast("Cargando mosaico de canales..."); break;
+        case 'spanish-tv': loadView('spanish_auto'); break;
         case 'sleep-30': setSleepTimer(30); break;
         case 'left': if (isPlayerOpen) { closePlayer(); } else { moveFocus('left'); } break;
         case 'right': if (!isPlayerOpen) moveFocus('right'); break;
         case 'up': if (isPlayerOpen) zapNext(); else moveFocus('up'); break;
         case 'down': if (isPlayerOpen) zapPrev(); else moveFocus('down'); break;
-        case 'enter': if (!isPlayerOpen) { const f = document.querySelector('.focused'); if (f) f.click(); } break;
+        case 'enter':
+            if (isPlayerOpen) {
+                video.play();
+                showToast("Reproduciendo...");
+            } else {
+                const f = document.querySelector('.focused');
+                if (f) f.click();
+            }
+            break;
     }
 }
 
@@ -1059,11 +1122,13 @@ async function loadView(viewName) {
         } else if (viewName === 'spanish_auto') {
             const channels = await getChannelsByFilter('language', 'Español');
             renderChannelGrid(channels, 'Zapping: Canales en Español');
-            // We set the list so the remote can zap, but we don't open the player automatically
-            // to avoid being intrusive, but it's ready for CH+ / CH- / OK.
-            currentChannelList = channels;
-            currentChannelIndex = -1;
-            showToast("Lista en Español cargada para navegación.");
+
+            if (channels.length > 0) {
+                currentChannelList = channels;
+                currentChannelIndex = 0;
+                showToast("Sintonizando TV en Español...");
+                setTimeout(() => openPlayer(channels[0]), 500);
+            }
         }
     } catch (e) {
         console.error("View Error", e);
