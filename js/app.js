@@ -324,6 +324,16 @@ function closePlayer() {
 }
 
 async function init() {
+    // --- QUICK CHECK: Remote Control Mode ---
+    // If the URL has ?pair=, we stop everything and just show the remote.
+    // This prevents the phone from trying to load 11,000 channels.
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('pair')) {
+        const pairId = urlParams.get('pair');
+        initRemoteControl(pairId);
+        return; // STOP HERE
+    }
+
     if (window.location.protocol === 'file:') {
         alert("¡Atención! Estás abriendo Allivision desde el explorador de archivos (file://). Para que los canales carguen correctamente, debes usar un servidor local (como Live Server) o subir los archivos a un hosting (GitHub Pages, Vercel, etc.).");
     }
@@ -365,13 +375,6 @@ async function init() {
     document.querySelector('.close-modal').addEventListener('click', () => {
         document.getElementById('pairing-modal').classList.add('hidden');
     });
-
-    // Check if we are in "Remote Mode" (URL param)
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('pair')) {
-        const pairId = urlParams.get('pair');
-        initRemoteControl(pairId);
-    }
 
     // Bind Zapping Buttons (UI)
 
@@ -441,24 +444,54 @@ function initTVReceiver() {
 }
 
 function initRemoteControl(pairId) {
-    // UI Switch to Remote Mode
-    document.querySelector('.app-container').classList.add('hidden');
-    document.getElementById('remote-control-screen').classList.remove('hidden');
+    // Hide everything else immediately
+    document.querySelector('.app-container').style.display = 'none';
+    const remoteScreen = document.getElementById('remote-control-screen');
+    remoteScreen.classList.remove('hidden');
+
+    const statusText = remoteScreen.querySelector('.remote-status-active');
+    statusText.textContent = "Conectando al televisor...";
+    statusText.style.color = "var(--text-muted)";
 
     peer = new Peer();
     peer.on('open', () => {
-        const connection = peer.connect(`allivision-tv-${pairId}`);
+        const connection = peer.connect(`allivision-tv-${pairId}`, {
+            reliable: true
+        });
+
         connection.on('open', () => {
             console.log("Connected to TV");
+            statusText.textContent = "● Mando Activo (Conectado)";
+            statusText.style.color = "#00ff88";
+
             // Bind Buttons
             document.querySelectorAll('.remote-btn').forEach(btn => {
                 btn.onclick = () => {
                     connection.send(btn.dataset.cmd);
-                    // Haptic feedback if available
-                    if (navigator.vibrate) navigator.vibrate(50);
+                    // Haptic feedback
+                    if (window.navigator && window.navigator.vibrate) {
+                        window.navigator.vibrate(40);
+                    }
                 };
             });
         });
+
+        connection.on('close', () => {
+            statusText.textContent = "Conexión perdida. Recarga para reconectar.";
+            statusText.style.color = "#ff4757";
+        });
+
+        connection.on('error', (err) => {
+            console.error("Remote Error:", err);
+            statusText.textContent = "Error de enlace. Verifica el código.";
+            statusText.style.color = "#ff4757";
+        });
+    });
+
+    peer.on('error', (err) => {
+        console.error("Peer Error:", err);
+        statusText.textContent = "Error de red. Intenta de nuevo.";
+        statusText.style.color = "#ff4757";
     });
 }
 
