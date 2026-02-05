@@ -1,4 +1,4 @@
-const CACHE_NAME = 'allivision-v8';
+const CACHE_NAME = 'allivision-v9';
 const ASSETS = [
     './',
     './index.html',
@@ -27,6 +27,12 @@ self.addEventListener('activate', (e) => {
             })
         ])
     );
+});
+
+self.addEventListener('message', (event) => {
+    if (event.data === 'skipWaiting') {
+        self.skipWaiting();
+    }
 });
 
 self.addEventListener('fetch', (e) => {

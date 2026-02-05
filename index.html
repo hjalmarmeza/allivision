@@ -188,19 +188,56 @@
 
     <script type="module" src="js/app.js"></script>
     <script>
+        let deferredPrompt;
+
+        // Custom Show Toast specifically for the initial load if needed
+        function showInternalToast(msg) {
+             const t = document.createElement('div');
+             t.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--accent-primary); color:#000; padding:10px 20px; border-radius:30px; font-weight:bold; z-index:100000; box-shadow:0 5px 15px rgba(0,0,0,0.5);';
+             t.textContent = msg;
+             document.body.appendChild(t);
+             setTimeout(() => t.remove(), 4000);
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log("PWA Install prompt detected.");
+            // Store it globally so app.js can use it to show an "Install" button in the remote
+            window.pwaDeferredPrompt = e;
+        });
+
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
                     .then(reg => {
+                        console.log("SW Registered");
+                        
+                        // Check for updates every 5 minutes
+                        setInterval(() => {
+                            reg.update();
+                            console.log("Checking for SW updates...");
+                        }, 1000 * 60 * 5);
+
                         reg.onupdatefound = () => {
                             const newWorker = reg.installing;
                             newWorker.onstatechange = () => {
                                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    window.location.reload();
+                                    showInternalToast("Nueva versión detectada. Actualizando...");
+                                    setTimeout(() => window.location.reload(), 1500);
                                 }
                             };
                         };
                     });
+            });
+            
+            // Handle automatic refresh when the new service worker takes over
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    window.location.reload();
+                    refreshing = true;
+                }
             });
         }
     </script>

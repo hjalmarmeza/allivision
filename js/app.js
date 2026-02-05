@@ -819,8 +819,11 @@ function initRemoteControl(pairId) {
                     </button>
                     <button class="extra-btn" onclick="sendCmd('ambient')"><span class="material-icons-round">landscape</span>Ambiente</button>
                     <button class="extra-btn" onclick="sendCmd('mosaic')"><span class="material-icons-round">grid_view</span>Mosaico</button>
-                    <button class="extra-btn" onclick="sendCmd('sleep-30')"><span class="material-icons-round">snooze</span>Dormir 30'</button>
                     <button class="extra-btn" onclick="sendCmd('mute')"><span class="material-icons-round">volume_off</span>Silenciar</button>
+                    <button id="pwa-install-btn" class="extra-btn" style="display:none; background:rgba(255,255,255,0.1); border:1px solid var(--accent-primary);">
+                        <span class="material-icons-round" style="color:var(--accent-primary);">download</span>
+                        <b>Instalar App</b>
+                    </button>
                 </div>
                 <button class="mini-btn exit-btn" onclick="location.reload()" style="margin-top:auto;">Reiniciar Mando</button>
             </div>
@@ -836,6 +839,32 @@ function initRemoteControl(pairId) {
             document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
             if (navigator.vibrate) navigator.vibrate(20);
         };
+    });
+
+    // PWA Install Logic for Remote
+    const installBtn = document.getElementById('pwa-install-btn');
+    if (window.pwaDeferredPrompt) {
+        installBtn.style.display = 'flex';
+        installBtn.onclick = async () => {
+            window.pwaDeferredPrompt.prompt();
+            const { outcome } = await window.pwaDeferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                installBtn.style.display = 'none';
+            }
+            window.pwaDeferredPrompt = null;
+        };
+    }
+
+    // Listen for the prompt if it hasn't fired yet
+    window.addEventListener('beforeinstallprompt', (e) => {
+        if (installBtn) {
+            installBtn.style.display = 'flex';
+            installBtn.onclick = async () => {
+                e.prompt();
+                const { outcome } = await e.userChoice;
+                if (outcome === 'accepted') installBtn.style.display = 'none';
+            };
+        }
     });
 
     const peerObj = new Peer();
