@@ -2,11 +2,11 @@
     "name": "Allivision Remote",
     "short_name": "Remote",
     "description": "Smart Remote for Allivision TV",
-    "start_url": "./index.html",
+    "start_url": ".",
     "display": "standalone",
     "background_color": "#050510",
     "theme_color": "#00f2ff",
-    "orientation": "portrait",
+    "orientation": "any",
     "icons": [
         {
             "src": "assets/icon-192.png",

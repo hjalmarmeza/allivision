@@ -11,12 +11,13 @@ import {
 } from './api.js';
 
 // --- HYPER-PRIORITY: Remote Control Mode ---
-// This must run before DOMContentLoaded to prevent loading 11,000 channels on mobile
 const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.has('pair')) {
-    const pairId = urlParams.get('pair');
+const savedPairId = localStorage.getItem('allivision_remote_id');
+
+if (urlParams.has('pair') || savedPairId) {
+    const pairId = urlParams.get('pair') || savedPairId;
+    if (urlParams.has('pair')) localStorage.setItem('allivision_remote_id', pairId);
     console.log("Remote Mode Initializing...");
-    // Force immediate execution to avoid channel list loading
     initRemoteControl(pairId);
 } else {
     document.addEventListener('DOMContentLoaded', init);
@@ -631,17 +632,49 @@ async function init() {
             }
         }
     });
+}
 
-    // GLOBAL USER INTERACTION BLESSING
-    document.addEventListener('click', () => {
+// GLOBAL USER INTERACTION BLESSING (Optimized for TV)
+function initBlessing() {
+    if (urlParams.has('pair') || savedPairId) return; // Don't show blessing on remote
+
+    const bless = document.createElement('div');
+    bless.id = 'bless-overlay';
+    bless.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(5, 5, 16, 0.95); z-index: 20000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        cursor: pointer; transition: opacity 0.5s;
+    `;
+    bless.innerHTML = `
+        <div style="text-align:center;">
+             <span class="material-icons-round" style="font-size: 5rem; color: var(--accent-primary); margin-bottom: 20px;">touch_app</span>
+             <h1 style="color:white; margin-bottom: 15px;">Pulsa en la TV para Activar</h1>
+             <p style="color:var(--text-muted); font-size:1.2rem;">Habilitar Pantalla Completa y Sonido Automático</p>
+        </div>
+    `;
+
+    bless.onclick = () => {
         const v = document.getElementById('video');
         if (v) {
-            // "Bless" the video element so it can be controlled by PeerJS commands
             v.play().then(() => v.pause()).catch(() => { });
-            console.log("Video element 'blessed' by user interaction.");
+            console.log("Video element 'blessed' by TV click.");
         }
-    }, { once: true });
+        bless.style.opacity = '0';
+        setTimeout(() => bless.remove(), 500);
+
+        // Try initial fullscreen on the App
+        document.documentElement.requestFullscreen().catch(() => { });
+    };
+
+    document.body.appendChild(bless);
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (!urlParams.has('pair') && !savedPairId) {
+        initBlessing();
+    }
+});
 
 // --- Remote Control System (Peer-to-Peer) ---
 
@@ -742,9 +775,10 @@ function initRemoteControl(pairId) {
         .rem-search-input { width: 100%; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 30px; padding: 12px 20px 12px 45px; color: white; outline: none; }
         .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #8b8b9e; }
         
-        .grid-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .mini-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.8rem; font-weight: bold; }
+        .mini-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.8rem; font-weight: bold; width: 100%; border-radius: 12px; }
         .exit-btn { border-color: #ff4757; color: #ff4757; }
+        
+        .rem-select { width: 100%; background: #1a1a2e; border: 1px solid #00f2ff; border-radius: 12px; padding: 10px; color: white; margin-top: 10px; font-family: inherit; font-size: 0.9rem; outline: none; }
     `;
     document.head.appendChild(style);
 
@@ -778,6 +812,12 @@ function initRemoteControl(pairId) {
                 <div class="rem-search-container">
                     <span class="material-icons-round search-icon">search</span>
                     <input type="text" class="rem-search-input" id="rem-search" placeholder="Escribir en la TV...">
+                </div>
+
+                <div id="rem-cat-container">
+                    <select id="rem-category-select" class="rem-select">
+                        <option value="">Cargando categorías...</option>
+                    </select>
                 </div>
 
                 <div class="d-pad-container">
@@ -820,6 +860,10 @@ function initRemoteControl(pairId) {
                     <button class="extra-btn" onclick="sendCmd('ambient')"><span class="material-icons-round">landscape</span>Ambiente</button>
                     <button class="extra-btn" onclick="sendCmd('mosaic')"><span class="material-icons-round">grid_view</span>Mosaico</button>
                     <button class="extra-btn" onclick="sendCmd('mute')"><span class="material-icons-round">volume_off</span>Silenciar</button>
+                    <button class="extra-btn" onclick="sendCmd({type:'fullscreen'})">
+                        <span class="material-icons-round">fullscreen</span>
+                        <b>PANTALLA</b>
+                    </button>
                     <button id="pwa-install-btn" class="extra-btn" style="display:none; background:rgba(255,255,255,0.1); border:1px solid var(--accent-primary);">
                         <span class="material-icons-round" style="color:var(--accent-primary);">download</span>
                         <b>Instalar App</b>
@@ -863,6 +907,26 @@ function initRemoteControl(pairId) {
                 e.prompt();
                 const { outcome } = await e.userChoice;
                 if (outcome === 'accepted') installBtn.style.display = 'none';
+            };
+        }
+    });
+
+    // Load Categories for Remote
+    getCategories().then(cats => {
+        const select = document.getElementById('rem-category-select');
+        if (select) {
+            select.innerHTML = '<option value="">Filtrar Categoría...</option>';
+            cats.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                opt.textContent = `${c.name} (${c.count})`;
+                select.appendChild(opt);
+            });
+            select.onchange = (e) => {
+                if (e.target.value) {
+                    sendCmd({ type: 'load-category', category: e.target.value });
+                    showToast(`TV: Cargando ${e.target.value}`);
+                }
             };
         }
     });
@@ -981,6 +1045,22 @@ function handleRemoteCommand(cmd) {
                 handleSearch(cmd.query);
                 currentFocusScope = 'search';
                 applyFocus();
+            }
+        } else if (cmd.type === 'load-category') {
+            loadView('categories').then(() => {
+                getChannelsByFilter('category', cmd.category).then(channels => {
+                    renderChannelGrid(channels, `Categoría: ${cmd.category}`, true, { type: 'category', value: cmd.category });
+                });
+            });
+        } else if (cmd.type === 'fullscreen') {
+            const overlay = document.getElementById('player-overlay');
+            if (!document.fullscreenElement) {
+                overlay.requestFullscreen().catch(e => {
+                    console.warn("Fullscreen error", e);
+                    showToast("Pulsa OK en la TV para autorizar pantalla completa");
+                });
+            } else {
+                document.exitFullscreen().catch(e => { });
             }
         }
         return;
