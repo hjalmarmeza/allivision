@@ -15,15 +15,10 @@ import {
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.has('pair')) {
     const pairId = urlParams.get('pair');
-    console.log("Remote Mode Detected. ID:", pairId);
-    // Use a small delay to ensure body exists if script is at top
-    if (document.body) {
-        initRemoteControl(pairId);
-    } else {
-        window.addEventListener('load', () => initRemoteControl(pairId));
-    }
+    console.log("Remote Mode Initializing...");
+    // Force immediate execution to avoid channel list loading
+    initRemoteControl(pairId);
 } else {
-    // Normal Mode
     document.addEventListener('DOMContentLoaded', init);
 }
 
@@ -454,49 +449,93 @@ function initTVReceiver() {
 }
 
 function initRemoteControl(pairId) {
-    document.body.innerHTML = ""; // Full clear for mobile stability
-    document.body.style.background = "#050510";
+    // Create a beautiful, responsive Dark Mode Remote UI
+    const style = document.createElement('style');
+    style.textContent = `
+        body { background: #050510 !important; color: white !important; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; padding: 0; height: 100vh; width: 100vw; }
+        .rem-container { display: flex; flex-direction: column; height: 100dvh; padding: 15px; box-sizing: border-box; justify-content: space-between; gap: 10px; }
+        .rem-header { text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .rem-status { font-size: 0.75rem; transition: all 0.3s; color: #8b8b9e; }
+        .rem-status.online { color: #00f2ff; text-shadow: 0 0 10px rgba(0,242,255,0.5); }
+        
+        .d-pad-container { position: relative; width: 220px; height: 220px; margin: 0 auto; background: #0f0f1a; border-radius: 50%; border: 2px solid #1a1a2e; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+        .d-btn { position: absolute; background: #1a1a2e; border: 1px solid #2a2a4e; color: white; border-radius: 12px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; active-transform: scale(0.9); transition: all 0.1s; }
+        .d-btn:active { background: #00f2ff; color: #050510; }
+        .d-btn.up { top: 10px; } .d-btn.down { bottom: 10px; } .d-btn.left { left: 10px; } .d-btn.right { right: 10px; }
+        .d-ok { background: var(--accent-secondary, #7000ff); width: 70px; height: 70px; border-radius: 50%; font-weight: bold; border: none; box-shadow: 0 0 20px rgba(112,0,255,0.4); }
+        
+        .grid-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .ctrl-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 15px; padding: 15px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 0.9rem; -webkit-tap-highlight-color: transparent; }
+        .ctrl-btn:active { background: #2a2a4e; transform: scale(0.96); }
+        .ctrl-btn .material-icons-round { font-size: 1.5rem; }
+        .exit-btn { border-color: #ff4757; color: #ff4757; background: rgba(255,71,87,0.05); }
+    `;
+    document.head.appendChild(style);
 
-    const remoteUI = `
-        <div id="remote-control-screen" style="display:flex; flex-direction:column; height:100vh; padding:2rem;">
-            <div style="text-align:center; margin-bottom:20px;">
-                <h2 style="color:white; font-family:sans-serif;">Allivision Remote</h2>
-                <div id="rem-status" style="color:#8b8b9e; font-size:0.8rem;">Conectando...</div>
+    const ui = `
+        <div class="rem-container">
+            <div class="rem-header">
+                <div style="font-weight: 900; letter-spacing: 2px; color: #00f2ff;">ALLIVISION</div>
+                <div id="rem-status" class="rem-status">Estableciendo enlace...</div>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; flex:1;">
-                <button class="r-btn" data-cmd="next" style="grid-row: span 2; background:#1a1a2e; border:1px solid #00f2ff; border-radius:20px; color:white; font-size:1.5rem;">CH +</button>
-                <button class="r-btn" data-cmd="vol-up" style="background:#1a1a2e; border:1px solid #333; border-radius:20px; color:white;">VOL +</button>
-                <button class="r-btn" data-cmd="vol-down" style="background:#1a1a2e; border:1px solid #333; border-radius:20px; color:white;">VOL -</button>
-                <button class="r-btn" data-cmd="prev" style="grid-row: span 2; background:#1a1a2e; border:1px solid #00f2ff; border-radius:20px; color:white; font-size:1.5rem;">CH -</button>
-                <button class="r-btn" data-cmd="mute" style="background:#1a1a2e; border:1px solid #f1c40f; color:#f1c40f; border-radius:20px;">MUTE</button>
-                <button class="r-btn" data-cmd="close" style="background:#1a1a2e; border:1px solid #ff4757; color:#ff4757; border-radius:20px;">SALIR</button>
+
+            <div class="d-pad-container">
+                <button class="d-btn up" onclick="sendCmd('up')"><span class="material-icons-round">keyboard_arrow_up</span></button>
+                <button class="d-btn down" onclick="sendCmd('down')"><span class="material-icons-round">keyboard_arrow_down</span></button>
+                <button class="d-btn left" onclick="sendCmd('left')"><span class="material-icons-round">keyboard_arrow_left</span></button>
+                <button class="d-btn right" onclick="sendCmd('right')"><span class="material-icons-round">keyboard_arrow_right</span></button>
+                <button class="d-btn d-ok" onclick="sendCmd('enter')">OK</button>
+            </div>
+
+            <div class="grid-controls">
+                <button class="ctrl-btn" onclick="sendCmd('vol-up')"><span class="material-icons-round">volume_up</span> VOL+</button>
+                <button class="ctrl-btn" onclick="sendCmd('next')"><span class="material-icons-round">skip_next</span> CH+</button>
+                <button class="ctrl-btn" onclick="sendCmd('vol-down')"><span class="material-icons-round">volume_down</span> VOL-</button>
+                <button class="ctrl-btn" onclick="sendCmd('prev')"><span class="material-icons-round">skip_previous</span> CH-</button>
+                <button class="ctrl-btn" onclick="sendCmd('mute')"><span class="material-icons-round">volume_off</span> MUTE</button>
+                <button class="ctrl-btn exit-btn" onclick="sendCmd('close')"><span class="material-icons-round">power_settings_new</span> SALIR</button>
+            </div>
+            
+            <div style="text-align:center;">
+                <button onclick="location.reload()" style="background:none; border:none; color:gray; font-size:0.6rem; text-decoration:underline;">Reiniciar Mando</button>
             </div>
         </div>
     `;
-    document.body.innerHTML = remoteUI;
+    document.body.innerHTML = ui;
 
-    const status = document.getElementById('rem-status');
-    const p = new Peer();
-
-    p.on('open', () => {
-        const c = p.connect(`alli-${pairId}`, { reliable: true });
-        c.on('open', () => {
-            status.textContent = "● Mando Conectado";
-            status.style.color = "#00ff88";
-            document.querySelectorAll('.r-btn').forEach(b => {
-                b.onclick = () => {
-                    c.send(b.dataset.cmd);
-                    if (navigator.vibrate) navigator.vibrate(30);
-                };
-            });
+    const peerObj = new Peer();
+    peerObj.on('open', () => {
+        const connObj = peerObj.connect(`alli-${pairId}`, { reliable: true });
+        window.sendCmd = (c) => {
+            if (connObj.open) {
+                connObj.send(c);
+                if (navigator.vibrate) navigator.vibrate(35);
+            }
+        };
+        connObj.on('open', () => {
+            const st = document.getElementById('rem-status');
+            st.textContent = "CONECTADO";
+            st.classList.add('online');
         });
-        c.on('error', () => { status.textContent = "Error de enlace"; });
     });
 }
 
 function handleRemoteCommand(cmd) {
-    console.log("Remote Command:", cmd);
+    console.log("Remote Command received:", cmd);
     const video = document.getElementById('video');
+    const isPlayerOpen = !document.getElementById('player-overlay').classList.contains('hidden');
+
+    // Navigation Mapping
+    if (!isPlayerOpen) {
+        // If player is NOT open, we navigate the list
+        if (cmd === 'up') window.scrollBy({ top: -300, behavior: 'smooth' });
+        if (cmd === 'down') window.scrollBy({ top: 300, behavior: 'smooth' });
+        if (cmd === 'enter') {
+            // Click the center-most card
+            const centerCard = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2).closest('.channel-card');
+            if (centerCard) centerCard.click();
+        }
+    }
 
     switch (cmd) {
         case 'next': zapNext(); break;
@@ -505,6 +544,7 @@ function handleRemoteCommand(cmd) {
         case 'vol-down': if (video.volume > 0.1) video.volume -= 0.1; break;
         case 'mute': video.muted = !video.muted; break;
         case 'close': closePlayer(); break;
+        case 'left': if (isPlayerOpen) closePlayer(); break;
     }
 }
 function zapNext() {
