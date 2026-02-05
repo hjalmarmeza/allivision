@@ -1,9 +1,12 @@
-const CACHE_NAME = 'allivision-v7';
+const CACHE_NAME = 'allivision-v8';
 const ASSETS = [
     './',
     './index.html',
     './css/style.css',
-    './js/app.js'
+    './js/app.js',
+    './manifest.json',
+    './assets/icon-192.png',
+    './assets/icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
