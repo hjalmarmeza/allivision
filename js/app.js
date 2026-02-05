@@ -182,12 +182,14 @@ function openPlayer(channel, list = [], index = -1) {
     title.textContent = channel.name;
     overlay.classList.remove('hidden');
 
-    // Set Safety Timeout (8 seconds)
+    // Set Safety Timeout (15 seconds)
     playTimeoutTimer = setTimeout(() => {
-        console.warn("Channel load timeout");
-        showPlayerError("El canal tarda demasiado en responder.", true, channel.id);
-        if (window.currentHls) window.currentHls.destroy();
-    }, 8000); // 8s timeout
+        console.warn("Channel load timeout triggered");
+        // We check if video is ALREADY playing before showing error
+        if (video.paused || video.ended || video.readyState < 2) {
+            showPlayerError("Sintonización lenta...", false, channel.id);
+        }
+    }, 15000); // Increased to 15s
 
     // ... (PiP Button logic)
     if (document.pictureInPictureEnabled) {
@@ -212,9 +214,17 @@ function openPlayer(channel, list = [], index = -1) {
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function () {
-            clearTimeout(playTimeoutTimer); // Clear timeout on success
+            console.log("HLS Manifest Parsed - Video starting...");
+            clearTimeout(playTimeoutTimer);
             video.play().catch(e => console.log("Autoplay blocked", e));
         });
+
+        // AUTO-HIDE ERROR: If video actually starts playing, remove any error overlay
+        video.onplaying = () => {
+            clearTimeout(playTimeoutTimer);
+            const errorMsg = document.getElementById('player-error-msg');
+            if (errorMsg) errorMsg.remove();
+        };
 
         // ... (CC Logic)
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (e, data) => {
@@ -284,10 +294,13 @@ function showPlayerError(msg, isFatal = false, channelId = null) {
     div.style.zIndex = '10';
     div.style.color = '#fff';
     div.innerHTML = `
-        <span class="material-icons-round" style="font-size: 48px; color: #ff9f43; margin-bottom: 10px;">warning_amber</span>
+        <span class="material-icons-round" style="font-size: 48px; color: #ff9f43; margin-bottom: 10px;">hourglass_empty</span>
         <p style="font-size: 1.2rem; font-weight:bold;">${msg}</p>
-        <p style="font-size: 0.9rem; color: #ccc; margin-top: 5px;">Hemos marcado este canal como inestable.</p>
-        <button onclick="document.getElementById('close-player').click()" style="margin-top:20px; padding:10px 20px; background:var(--accent-primary); border:none; border-radius:30px; color:#fff; cursor:pointer;">Cerrar y buscar otro</button>
+        <p style="font-size: 0.9rem; color: #ccc; margin-top: 5px;">Algunas señales tardan un poco más en sincronizar.</p>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button onclick="this.parentElement.parentElement.remove()" style="padding:10px 20px; background:var(--accent-secondary); border:none; border-radius:30px; color:#fff; cursor:pointer; font-weight:bold;">Esperar más</button>
+            <button onclick="document.getElementById('close-player').click()" style="padding:10px 20px; background:rgba(255,255,255,0.1); border:1px solid #555; border-radius:30px; color:#fff; cursor:pointer;">Cerrar</button>
+        </div>
     `;
     container.appendChild(div);
 }
