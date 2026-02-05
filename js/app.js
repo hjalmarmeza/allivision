@@ -10,6 +10,23 @@ import {
     searchGlobal
 } from './api.js';
 
+// --- HYPER-PRIORITY: Remote Control Mode ---
+// This must run before DOMContentLoaded to prevent loading 11,000 channels on mobile
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.has('pair')) {
+    const pairId = urlParams.get('pair');
+    console.log("Remote Mode Detected. ID:", pairId);
+    // Use a small delay to ensure body exists if script is at top
+    if (document.body) {
+        initRemoteControl(pairId);
+    } else {
+        window.addEventListener('load', () => initRemoteControl(pairId));
+    }
+} else {
+    // Normal Mode
+    document.addEventListener('DOMContentLoaded', init);
+}
+
 // --- State Management ---
 const FAVORITES_KEY = 'allivision_favs';
 const BROKEN_KEY = 'allivision_broken';
@@ -21,18 +38,6 @@ let currentChannelList = [];
 let currentChannelIndex = -1;
 let peer = null;
 let conn = null;
-
-// --- Init ---
-document.addEventListener('DOMContentLoaded', init);
-// ... (init remains same)
-
-// ... (loadView logic remains same)
-
-// --- Rendering Functions ---
-
-// Deprecated: Legacy renderChannelGrid removed. See updated version below.
-
-// ... (renderCountries, renderCategories, renderLanguages, createGrid, createCard, toggleFavorite, showToast logic remains)
 
 // --- Broken Channel Logic ---
 function markAsBroken(id) {
@@ -324,16 +329,6 @@ function closePlayer() {
 }
 
 async function init() {
-    // --- QUICK CHECK: Remote Control Mode ---
-    // If the URL has ?pair=, we stop everything and just show the remote.
-    // This prevents the phone from trying to load 11,000 channels.
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('pair')) {
-        const pairId = urlParams.get('pair');
-        initRemoteControl(pairId);
-        return; // STOP HERE
-    }
-
     if (window.location.protocol === 'file:') {
         alert("¡Atención! Estás abriendo Allivision desde el explorador de archivos (file://). Para que los canales carguen correctamente, debes usar un servidor local (como Live Server) o subir los archivos a un hosting (GitHub Pages, Vercel, etc.).");
     }
@@ -420,7 +415,9 @@ function initTVReceiver() {
         console.log("TV ID Open:", id);
         document.getElementById('pair-code-display').textContent = simpleId;
 
-        const remoteUrl = `${window.location.origin}${window.location.pathname}?pair=${simpleId}`;
+        const currentUrl = window.location.href.split('?')[0];
+        const remoteUrl = `${currentUrl}?pair=${simpleId}&t=${Date.now()}`;
+
         const qrContainer = document.getElementById('qrcode');
         qrContainer.innerHTML = "";
         new QRCode(qrContainer, {

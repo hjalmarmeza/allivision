@@ -1,4 +1,4 @@
-const CACHE_NAME = 'allivision-v5';
+const CACHE_NAME = 'allivision-v6';
 const ASSETS = [
     './',
     './index.html',
