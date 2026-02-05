@@ -106,20 +106,28 @@ async function fetchSafeList() {
                 let cat = c.categories && c.categories.length > 0 ? c.categories[0] : 'General';
                 if (cat) cat = cat.charAt(0).toUpperCase() + cat.slice(1);
 
-                final.push({
-                    id: c.id,
-                    name: c.name,
-                    url: urlMap[c.id],
-                    logo: c.logo,
-                    website: c.website, // ADDED
-                    category: cat,
-                    country: niceCountryName,
-                    country_code: cCode,
-                    language: niceLang,
-                    language_code: langCode
-                });
-                count++;
-                if (count > 4000) break;
+                // EXCLUSIVE FAMILY FILTER: Only Spanish and English
+                const isSpanish = niceLang.toLowerCase().includes('español') || niceLang.toLowerCase().includes('spanish');
+                const isEnglish = niceLang.toLowerCase().includes('inglés') || niceLang.toLowerCase().includes('english');
+
+                if (isSpanish || isEnglish) {
+                    final.push({
+                        id: c.id,
+                        name: c.name,
+                        url: urlMap[c.id],
+                        logo: c.logo,
+                        website: c.website,
+                        category: cat,
+                        country: niceCountryName,
+                        country_code: cCode,
+                        language: niceLang,
+                        language_code: langCode
+                    });
+                    count++;
+                }
+
+                // Keep limit high but only for these two languages
+                if (count > 5000) break;
             }
         }
 
