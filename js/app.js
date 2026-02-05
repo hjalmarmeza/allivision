@@ -254,12 +254,22 @@ function openPlayer(channel, list = [], index = -1) {
     title.textContent = channel.name;
     overlay.classList.remove('hidden');
 
-    // Intentar Pantalla Completa (Requiere que el usuario haya interactuado con la página previamente)
-    try {
+    // AGGRESSIVE FULLSCREEN FOR TV
+    const triggerFullscreen = () => {
         if (!document.fullscreenElement) {
-            overlay.requestFullscreen().catch(e => console.warn("Fullscreen bloqueado por el navegador. Requiere interacción previa en la TV."));
+            overlay.requestFullscreen().catch(() => {
+                // If it fails, we try the whole document as fallback
+                document.documentElement.requestFullscreen().catch(() => {
+                    console.log("Auto-Fullscreen waiting for user activity on TV.");
+                });
+            });
         }
-    } catch (e) { }
+    };
+
+    // Attempt multiple times to overcome transient browser restrictions
+    triggerFullscreen();
+    setTimeout(triggerFullscreen, 500);
+    setTimeout(triggerFullscreen, 2000);
 
     // Set Safety Timeout (15 seconds)
     playTimeoutTimer = setTimeout(() => {
@@ -542,9 +552,27 @@ async function init() {
     if (window.location.protocol === 'file:') {
         alert("¡Atención! Estás abriendo Allivision desde el explorador de archivos (file://). Para que los canales carguen correctamente, debes usar un servidor local (como Live Server) o subir los archivos a un hosting (GitHub Pages, Vercel, etc.).");
     }
-    console.log('Allivision System Initializing...');
 
-    // Load initial content (Home)
+    // Detect mobile
+    const isMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) {
+        const switchBtn = document.getElementById('mobile-switch-to-remote');
+        if (switchBtn) {
+            switchBtn.style.display = 'flex';
+            switchBtn.onclick = () => {
+                const code = prompt("Introduce el código de 4 dígitos que aparece en la TV:");
+                if (code && code.length === 4) {
+                    localStorage.setItem('allivision_remote_id', code);
+                    window.location.reload();
+                }
+            };
+        }
+
+        // Show a welcoming hint for mobile
+        showToast("📱 Modo Móvil: Usa el botón 'MODO MANDO' para controlar tu TV");
+    }
+
+    console.log('Allivision System Initializing...');
     loadView('home');
 
     // Bind Navigation
@@ -857,6 +885,8 @@ function initRemoteControl(pairId) {
                         <span class="material-icons-round" style="color: #050510;">language</span>
                         <b>ENGLISH TV</b>
                     </button>
+                    <button class="extra-btn" onclick="sendCmd({type:'load-category', category:'Movies'})"><span class="material-icons-round">movie</span>Películas</button>
+                    <button class="extra-btn" onclick="sendCmd({type:'load-category', category:'Sports'})"><span class="material-icons-round">sports_soccer</span>Deportes</button>
                     <button class="extra-btn" onclick="sendCmd('ambient')"><span class="material-icons-round">landscape</span>Ambiente</button>
                     <button class="extra-btn" onclick="sendCmd('mosaic')"><span class="material-icons-round">grid_view</span>Mosaico</button>
                     <button class="extra-btn" onclick="sendCmd('mute')"><span class="material-icons-round">volume_off</span>Silenciar</button>
@@ -867,6 +897,10 @@ function initRemoteControl(pairId) {
                     <button id="pwa-install-btn" class="extra-btn" style="display:none; background:rgba(255,255,255,0.1); border:1px solid var(--accent-primary);">
                         <span class="material-icons-round" style="color:var(--accent-primary);">download</span>
                         <b>Instalar App</b>
+                    </button>
+                    <button class="extra-btn" onclick="if(confirm('¿Desvincular este mando de la TV?')){ localStorage.removeItem('allivision_remote_id'); location.href='/'; }" style="border-color:#ff4757; color:#ff4757;">
+                        <span class="material-icons-round">link_off</span>
+                        <b>Desvincular</b>
                     </button>
                 </div>
                 <button class="mini-btn exit-btn" onclick="location.reload()" style="margin-top:auto;">Reiniciar Mando</button>

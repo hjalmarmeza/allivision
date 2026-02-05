@@ -75,6 +75,11 @@
                     <span class="material-icons-round">settings_remote</span>
                     <span>Emparejar Mando</span>
                 </button>
+                <button class="nav-item mobile-only-btn" id="mobile-switch-to-remote"
+                    style="display:none; color: var(--accent-primary); border: 1px solid var(--accent-primary); margin-top: 10px; border-radius: 12px;">
+                    <span class="material-icons-round">phonelink_setup</span>
+                    <span>MODO MANDO</span>
+                </button>
             </nav>
 
             <div class="status-bar">
@@ -192,11 +197,11 @@
 
         // Custom Show Toast specifically for the initial load if needed
         function showInternalToast(msg) {
-             const t = document.createElement('div');
-             t.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--accent-primary); color:#000; padding:10px 20px; border-radius:30px; font-weight:bold; z-index:100000; box-shadow:0 5px 15px rgba(0,0,0,0.5);';
-             t.textContent = msg;
-             document.body.appendChild(t);
-             setTimeout(() => t.remove(), 4000);
+            const t = document.createElement('div');
+            t.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--accent-primary); color:#000; padding:10px 20px; border-radius:30px; font-weight:bold; z-index:100000; box-shadow:0 5px 15px rgba(0,0,0,0.5);';
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 4000);
         }
 
         window.addEventListener('beforeinstallprompt', (e) => {
@@ -212,7 +217,7 @@
                 navigator.serviceWorker.register('./sw.js')
                     .then(reg => {
                         console.log("SW Registered");
-                        
+
                         // Check for updates every 5 minutes
                         setInterval(() => {
                             reg.update();
@@ -230,7 +235,7 @@
                         };
                     });
             });
-            
+
             // Handle automatic refresh when the new service worker takes over
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
