@@ -329,6 +329,14 @@ function openPlayer(channel, list = [], index = -1) {
             if (errorMsg) errorMsg.remove();
         };
 
+        video.ontimeupdate = () => {
+            if (video.currentTime > 0) {
+                clearTimeout(playTimeoutTimer);
+                const errorMsg = document.getElementById('player-error-msg');
+                if (errorMsg) errorMsg.remove();
+            }
+        };
+
         // ... (CC Logic)
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (e, data) => {
             if (data.subtitleTracks && data.subtitleTracks.length > 0) {
@@ -369,6 +377,20 @@ function openPlayer(channel, list = [], index = -1) {
                         showToast("Pulsa OK para reproducir");
                     });
                 });
+            };
+
+            video.onplaying = () => {
+                clearTimeout(playTimeoutTimer);
+                const errorMsg = document.getElementById('player-error-msg');
+                if (errorMsg) errorMsg.remove();
+            };
+
+            video.ontimeupdate = () => {
+                if (video.currentTime > 0) {
+                    clearTimeout(playTimeoutTimer);
+                    const errorMsg = document.getElementById('player-error-msg');
+                    if (errorMsg) errorMsg.remove();
+                }
             };
 
             attemptPlay();
@@ -757,17 +779,31 @@ function initRemoteControl(pairId) {
 
         // Trackpad Handlers
         const pad = document.getElementById('large-pad');
-        let lastX = 0, lastY = 0, moved = false;
-        pad.addEventListener('touchstart', e => { lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; moved = false; });
+        let startX = 0, startY = 0, lastX = 0, lastY = 0, totalDist = 0;
+
+        pad.addEventListener('touchstart', e => {
+            startX = lastX = e.touches[0].clientX;
+            startY = lastY = e.touches[0].clientY;
+            totalDist = 0;
+        });
+
         pad.addEventListener('touchmove', e => {
-            const dx = (e.touches[0].clientX - lastX) * 2.5; // High sensitivity for large pad
+            const dx = (e.touches[0].clientX - lastX) * 2.5;
             const dy = (e.touches[0].clientY - lastY) * 2.5;
-            lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
-            moved = true;
+
+            totalDist += Math.sqrt(dx * dx + dy * dy);
+            lastX = e.touches[0].clientX;
+            lastY = e.touches[0].clientY;
+
             if (connObj.open) connObj.send({ type: 'move', dx, dy });
         });
+
         pad.addEventListener('touchend', () => {
-            if (!moved && connObj.open) { connObj.send({ type: 'click' }); if (navigator.vibrate) navigator.vibrate(50); }
+            // If the total movement was very small (less than 10px), count it as a click
+            if (totalDist < 10 && connObj.open) {
+                connObj.send({ type: 'click' });
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
         });
 
         connObj.on('data', data => {
@@ -863,12 +899,12 @@ function handleRemoteCommand(cmd) {
         case 'next': zapNext(); break;
         case 'prev': zapPrev(); break;
         case 'vol-up':
-            if (video.volume < 0.9) video.volume += 0.1;
+            video.volume = Math.min(1, video.volume + 0.1);
             video.muted = false;
             showToast(`Volumen: ${Math.round(video.volume * 100)}%`);
             break;
         case 'vol-down':
-            if (video.volume > 0.1) video.volume -= 0.1;
+            video.volume = Math.max(0, video.volume - 0.1);
             showToast(`Volumen: ${Math.round(video.volume * 100)}%`);
             break;
         case 'mute': video.muted = !video.muted; showToast(video.muted ? "Silenciado" : "Sonido activado"); break;
