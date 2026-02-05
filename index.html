@@ -55,6 +55,10 @@
                     <span class="material-icons-round">favorite</span>
                     <span>Favoritos</span>
                 </button>
+                <button class="nav-item" data-view="recent">
+                    <span class="material-icons-round">history</span>
+                    <span>Recientes</span>
+                </button>
                 <div class="nav-spacer"></div>
                 <button class="nav-item remote-nav" id="open-remote-modal">
                     <span class="material-icons-round">settings_remote</span>
@@ -105,6 +109,12 @@
                     </button>
                 </div>
                 <div class="player-controls">
+                    <div id="player-epg"
+                        style="margin-bottom: 10px; text-align: center; color: var(--accent-primary); font-size: 0.9rem; font-weight: bold; display: none;">
+                        <span class="material-icons-round"
+                            style="font-size: 1rem; vertical-align: middle;">play_circle</span>
+                        <span id="player-current-show">...</span>
+                    </div>
                     <div class="remote-hint">
                         <span class="material-icons-round">keyboard</span>
                         <span>Usa las flechas <b>↑ ↓</b> para hacer Zapping</span>

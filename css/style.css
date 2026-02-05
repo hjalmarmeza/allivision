@@ -251,6 +251,26 @@ video {
     }
 }
 
+/* Skeleton Loader */
+@keyframes skeleton-loading {
+    0% {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    50% {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    100% {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+}
+
+.skeleton {
+    animation: skeleton-loading 1.5s infinite linear;
+    border-radius: 8px;
+}
+
 /* Favorites Button on Card */
 .fav-btn {
     position: absolute;
@@ -521,6 +541,24 @@ video {
 
 .remote-hint b {
     color: var(--accent-primary);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
 }
 
 @keyframes pulse {

@@ -25,14 +25,21 @@ if (urlParams.has('pair')) {
 // --- State Management ---
 const FAVORITES_KEY = 'allivision_favs';
 const BROKEN_KEY = 'allivision_broken';
+const RECENT_KEY = 'allivision_recent';
 let favorites = JSON.parse(localStorage.getItem(FAVORITES_KEY)) || [];
 let brokenChannels = JSON.parse(localStorage.getItem(BROKEN_KEY)) || [];
+let recentChannels = JSON.parse(localStorage.getItem(RECENT_KEY)) || [];
 
 // --- Remote Control State ---
 let currentChannelList = [];
 let currentChannelIndex = -1;
 let peer = null;
 let conn = null;
+
+// --- Performance & Features State ---
+let idleTimer = null;
+let isAmbientMode = false;
+let sleepTimerId = null;
 
 // --- Navigation Focus State ---
 let currentFocusScope = 'grid'; // 'sidebar' | 'grid' | 'search'
@@ -200,13 +207,35 @@ function openPlayer(channel, list = [], index = -1) {
     // Reset Timeout
     clearTimeout(playTimeoutTimer);
 
-    // Update Remote if connected
+    // Update Remotes
+    const nextChan = currentChannelList[currentChannelIndex + 1] || currentChannelList[0];
+    const prevChan = currentChannelList[currentChannelIndex - 1] || currentChannelList[currentChannelList.length - 1];
+
     if (conn && conn.open) {
         conn.send({
             type: 'playing',
             name: channel.name,
-            logo: channel.logo || `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.name)}&background=1a1a2e&color=fff&size=128`
+            logo: channel.logo || `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.name)}&background=1a1a2e&color=fff&size=128`,
+            next: nextChan ? nextChan.name : '',
+            prev: prevChan ? prevChan.name : ''
         });
+    }
+
+    // Save to Recent
+    if (!recentChannels.some(c => c.id === channel.id)) {
+        recentChannels.unshift(channel);
+        if (recentChannels.length > 20) recentChannels.pop();
+        localStorage.setItem(RECENT_KEY, JSON.stringify(recentChannels));
+    }
+
+    // EPG Player Logic
+    const epgMocks = ['Noticias en Vivo', 'Película de Acción', 'Música Global', 'Entrevista Especial', 'Clima y Satélite', 'Cine de Culto'];
+    const currentShow = epgMocks[Math.floor(Math.random() * epgMocks.length)];
+    const epgEl = document.getElementById('player-epg');
+    const showEl = document.getElementById('player-current-show');
+    if (epgEl && showEl) {
+        epgEl.style.display = 'block';
+        showEl.textContent = currentShow;
     }
 
     // Clear error
@@ -352,11 +381,11 @@ function showPlayerError(msg, isFatal = false, channelId = null) {
     div.style.zIndex = '10';
     div.style.color = '#fff';
     div.innerHTML = `
-        <span class="material-icons-round" style="font-size: 48px; color: #ff9f43; margin-bottom: 10px;">hourglass_empty</span>
-        <p style="font-size: 1.2rem; font-weight:bold;">${msg}</p>
-        <p style="font-size: 0.9rem; color: #ccc; margin-top: 5px;">Algunas señales tardan un poco más en sincronizar.</p>
+        <span class="material-icons-round" style="font-size: 48px; color: #ff9f43; margin-bottom: 10px;">wifi_off</span>
+        <p style="font-size: 1.2rem; font-weight:bold;">Señal en caída...</p>
+        <p style="font-size: 0.9rem; color: #ccc; margin-top: 5px;">${msg}</p>
         <div style="display:flex; gap:10px; margin-top:20px;">
-            <button onclick="this.parentElement.parentElement.remove()" style="padding:10px 20px; background:var(--accent-secondary); border:none; border-radius:30px; color:#fff; cursor:pointer; font-weight:bold;">Esperar más</button>
+            <button onclick="this.parentElement.parentElement.remove()" style="padding:10px 20px; background:var(--accent-secondary); border:none; border-radius:30px; color:#fff; cursor:pointer; font-weight:bold;">Reintentar</button>
             <button onclick="document.getElementById('close-player').click()" style="padding:10px 20px; background:rgba(255,255,255,0.1); border:1px solid #555; border-radius:30px; color:#fff; cursor:pointer;">Cerrar</button>
         </div>
     `;
@@ -540,185 +569,181 @@ function initTVReceiver() {
     });
 }
 
+// Remote Control Initialization
 function initRemoteControl(pairId) {
-    // Create a beautiful, responsive Dark Mode Remote UI
     const style = document.createElement('style');
     style.textContent = `
         body { background: #050510 !important; color: white !important; font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; padding: 0; height: 100vh; width: 100vw; }
-        .rem-container { display: flex; flex-direction: column; height: 100dvh; padding: 15px; box-sizing: border-box; justify-content: flex-start; gap: 12px; }
-        .rem-header { text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .rem-status { font-size: 0.7rem; transition: all 0.3s; color: #8b8b9e; }
-        .rem-status.online { color: #00f2ff; text-shadow: 0 0 10px rgba(0,242,255,0.5); }
+        .rem-container { display: flex; flex-direction: column; height: 100dvh; padding: 0; box-sizing: border-box; }
         
-        /* Now Playing Card */
-        .now-playing-card { background: linear-gradient(135deg, #1a1a2e, #0f0f1a); border: 1px solid rgba(0, 242, 255, 0.2); border-radius: 16px; padding: 12px; display: flex; align-items: center; gap: 15px; margin-bottom: 5px; min-height: 60px; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0; transform: translateY(-10px); }
-        .now-playing-card.active { opacity: 1; transform: translateY(0); }
-        .playing-logo { width: 45px; height: 45px; border-radius: 8px; object-fit: contain; background: #fff; padding: 4px; }
-        .playing-info { flex: 1; }
-        .playing-info h4 { margin: 0; font-size: 0.9rem; color: #fff; }
-        .playing-info p { margin: 2px 0 0; font-size: 0.7rem; color: var(--accent-primary, #00f2ff); font-weight: bold; }
+        .rem-tabs { display: flex; background: #0f0f1a; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .rem-tab { flex: 1; padding: 15px; text-align: center; color: #8b8b9e; font-size: 0.75rem; font-weight: bold; cursor: pointer; transition: all 0.3s; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .rem-tab.active { color: #00f2ff; background: rgba(0, 242, 255, 0.05); box-shadow: inset 0 -3px 0 #00f2ff; }
+        .rem-tab .material-icons-round { font-size: 1.5rem; }
 
-        /* Search Input */
-        .rem-search-container { position: relative; width: 100%; }
-        .rem-search-input { width: 100%; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 30px; padding: 12px 20px 12px 45px; color: white; font-size: 1rem; outline: none; transition: border-color 0.3s; }
-        .rem-search-input:focus { border-color: #00f2ff; box-shadow: 0 0 15px rgba(0, 242, 255, 0.2); }
-        .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #8b8b9e; font-size: 1.2rem; }
+        .rem-content { flex: 1; overflow-y: auto; padding: 15px; display: none; }
+        .rem-content.active { display: flex; flex-direction: column; gap: 15px; }
 
-        .d-pad-container { position: relative; width: 200px; height: 200px; margin: 5px auto; background: #0f0f1a; border-radius: 50%; border: 2px solid #1a1a2e; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
-        .pad-container { display: none; width: 100%; height: 200px; background: #0f0f1a; border-radius: 24px; border: 2px dashed #2a2a4e; position: relative; touch-action: none; overflow: hidden; }
-        .pad-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #2a2a4e; text-transform: uppercase; letter-spacing: 2px; font-weight: 900; pointer-events: none; }
+        /* Control Tab Styles */
+        .now-playing-card { background: linear-gradient(135deg, #1a1a2e, #0f0f1a); border: 1px solid rgba(0, 242, 255, 0.2); border-radius: 16px; padding: 12px; display: flex; align-items: center; gap: 15px; transition: all 0.5s; opacity: 0.3; }
+        .now-playing-card.active { opacity: 1; border-radius: 16px; }
+        .playing-logo { width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; padding: 4px; }
         
-        .d-btn { position: absolute; background: #1a1a2e; border: 1px solid #2a2a4e; color: white; border-radius: 12px; width: 55px; height: 55px; display: flex; align-items: center; justify-content: center; transition: all 0.1s; }
+        .d-pad-container { position: relative; width: 220px; height: 220px; margin: 10px auto; background: #0f0f1a; border-radius: 50%; border: 4px solid #1a1a2e; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        .d-btn { position: absolute; background: #1a1a2e; border: 1px solid #2a2a4e; color: white; border-radius: 12px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; }
         .d-btn:active { background: #00f2ff; color: #050510; }
         .d-btn.up { top: 5px; } .d-btn.down { bottom: 5px; } .d-btn.left { left: 5px; } .d-btn.right { right: 5px; }
-        .d-ok { background: #7000ff; width: 65px; height: 65px; border-radius: 50%; font-weight: bold; border: none; box-shadow: 0 0 20px rgba(112,0,255,0.4); }
+        .d-ok { background: #7000ff; width: 70px; height: 70px; border-radius: 50%; border: none; font-weight: bold; box-shadow: 0 0 20px rgba(112,0,255,0.4); }
+
+        /* Trackpad Tab Styles */
+        .large-pad { flex: 1; background: #050510; border: 2px dashed #1a1a2e; border-radius: 24px; position: relative; touch-action: none; display: flex; align-items: center; justify-content: center; margin: 10px 0; overflow: hidden; }
+        .large-pad::after { content: 'TRACKPAD'; color: #1a1a2e; font-weight: 900; letter-spacing: 10px; font-size: 2rem; pointer-events: none; }
+
+        /* Extras Tab Styles */
+        .extras-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .extra-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 16px; padding: 20px; color: white; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .extra-btn:active { transform: scale(0.95); background: #2a2a4e; }
+        .extra-btn .material-icons-round { font-size: 2rem; color: #00f2ff; }
+
+        /* Common Elements */
+        .rem-search-container { position: relative; width: 100%; margin-top: 10px; }
+        .rem-search-input { width: 100%; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 30px; padding: 12px 20px 12px 45px; color: white; outline: none; }
+        .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #8b8b9e; }
         
-        .grid-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; }
-        .ctrl-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 0.85rem; -webkit-tap-highlight-color: transparent; }
-        .ctrl-btn:active { background: #2a2a4e; transform: scale(0.96); }
-        .ctrl-btn .material-icons-round { font-size: 1.3rem; }
-        .exit-btn { border-color: #ff4757; color: #ff4757; background: rgba(255,71,87,0.05); }
-        .mode-btn { border-color: #00f2ff; color: #00f2ff; grid-column: 1 / -1; height: 45px; }
+        .grid-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .mini-btn { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.8rem; font-weight: bold; }
+        .exit-btn { border-color: #ff4757; color: #ff4757; }
     `;
     document.head.appendChild(style);
 
     const ui = `
         <div class="rem-container">
-            <div class="rem-header">
-                <div style="font-weight: 900; letter-spacing: 2px; color: #00f2ff; font-size:0.8rem;">ALLIVISION</div>
-                <div id="rem-status" class="rem-status">CONECTANDO...</div>
+            <div style="padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; background: #050510;">
+                <div style="font-weight: 900; letter-spacing: 2px; color: #00f2ff; font-size:0.7rem;">ALLIVISION</div>
+                <div id="rem-status" style="font-size: 0.6rem; color: #ff4757; font-weight: bold;">DESCONECTADO</div>
             </div>
 
-            <div id="now-playing" class="now-playing-card">
-                <img src="" class="playing-logo" id="playing-logo" onerror="this.src='https://via.placeholder.com/50'">
-                <div class="playing-info">
-                    <h4 id="playing-name">Ninguna señal</h4>
-                    <p>EN VIVO</p>
+            <div class="rem-tabs">
+                <div class="rem-tab active" data-tab="tv"><span class="material-icons-round">tv</span>TV</div>
+                <div class="rem-tab" data-tab="mouse"><span class="material-icons-round">mouse</span>MOUSE</div>
+                <div class="rem-tab" data-tab="extras"><span class="material-icons-round">settings</span>EXTRAS</div>
+            </div>
+
+            <!-- TV Tab -->
+            <div id="tab-tv" class="rem-content active">
+                <div id="now-playing" class="now-playing-card">
+                    <img src="" class="playing-logo" id="playing-logo" onerror="this.src='https://via.placeholder.com/50'">
+                    <div class="playing-info">
+                        <h4 id="playing-name">Sintonizador...</h4>
+                        <div id="zap-preview" style="font-size: 0.6rem; color: #8b8b9e; margin-top: 4px; display: none;">
+                            <div style="display:flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:0.8rem;">arrow_upward</span> <span id="next-chan">...</span></div>
+                            <div style="display:flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:0.8rem;">arrow_downward</span> <span id="prev-chan">...</span></div>
+                        </div>
+                    </div>
+                    <span class="material-icons-round" style="color:#00f2ff;">sensors</span>
                 </div>
-                <span class="material-icons-round" style="color:#00f2ff; animation: pulse 2s infinite;">sensors</span>
+                
+                <div class="rem-search-container">
+                    <span class="material-icons-round search-icon">search</span>
+                    <input type="text" class="rem-search-input" id="rem-search" placeholder="Escribir en la TV...">
+                </div>
+
+                <div class="d-pad-container">
+                    <button class="d-btn up" onclick="sendCmd('up')"><span class="material-icons-round">keyboard_arrow_up</span></button>
+                    <button class="d-btn down" onclick="sendCmd('down')"><span class="material-icons-round">keyboard_arrow_down</span></button>
+                    <button class="d-btn left" onclick="sendCmd('left')"><span class="material-icons-round">keyboard_arrow_left</span></button>
+                    <button class="d-btn right" onclick="sendCmd('right')"><span class="material-icons-round">keyboard_arrow_right</span></button>
+                    <button class="d-btn d-ok" onclick="sendCmd('enter')">OK</button>
+                </div>
+
+                <div class="grid-mini">
+                    <button class="mini-btn" onclick="sendCmd('vol-up')"><span class="material-icons-round">volume_up</span> VOL+</button>
+                    <button class="mini-btn" onclick="sendCmd('next')"><span class="material-icons-round">skip_next</span> CH+</button>
+                    <button class="mini-btn" onclick="sendCmd('vol-down')"><span class="material-icons-round">volume_down</span> VOL-</button>
+                    <button class="mini-btn" onclick="sendCmd('prev')"><span class="material-icons-round">skip_previous</span> CH-</button>
+                </div>
             </div>
 
-            <div class="rem-search-container">
-                <span class="material-icons-round search-icon">search</span>
-                <input type="text" class="rem-search-input" id="rem-search" placeholder="Buscar en la TV...">
+            <!-- Mouse Tab -->
+            <div id="tab-mouse" class="rem-content">
+                <div style="color: #666; text-align: center; font-size: 0.8rem;">Desliza para mover el cursor • Toca para hacer click</div>
+                <div id="large-pad" class="large-pad"></div>
+                <div class="grid-mini">
+                    <button class="mini-btn" onclick="sendCmd('left')">ATRAS</button>
+                    <button class="mini-btn exit-btn" onclick="sendCmd('close')">SALIR</button>
+                </div>
             </div>
 
-            <div id="dpad-view" class="d-pad-container">
-                <button class="d-btn up" onclick="sendCmd('up')"><span class="material-icons-round">keyboard_arrow_up</span></button>
-                <button class="d-btn down" onclick="sendCmd('down')"><span class="material-icons-round">keyboard_arrow_down</span></button>
-                <button class="d-btn left" onclick="sendCmd('left')"><span class="material-icons-round">keyboard_arrow_left</span></button>
-                <button class="d-btn right" onclick="sendCmd('right')"><span class="material-icons-round">keyboard_arrow_right</span></button>
-                <button class="d-btn d-ok" onclick="sendCmd('enter')">OK</button>
-            </div>
-
-            <div id="pad-view" class="pad-container">
-                <div class="pad-label">Trackpad</div>
-            </div>
-
-            <div class="grid-controls">
-                <button class="ctrl-btn mode-btn" onclick="toggleMode()">
-                    <span class="material-icons-round" id="mode-icon">mouse</span> 
-                    <span id="mode-text">Usar Trackpad</span>
-                </button>
-                <button class="ctrl-btn" onclick="sendCmd('vol-up')"><span class="material-icons-round">volume_up</span> VOL+</button>
-                <button class="ctrl-btn" onclick="sendCmd('next')"><span class="material-icons-round">skip_next</span> CH+</button>
-                <button class="ctrl-btn" onclick="sendCmd('vol-down')"><span class="material-icons-round">volume_down</span> VOL-</button>
-                <button class="ctrl-btn" onclick="sendCmd('prev')"><span class="material-icons-round">skip_previous</span> CH-</button>
-                <button class="ctrl-btn" onclick="sendCmd('mute')"><span class="material-icons-round">volume_off</span> MUTE</button>
-                <button class="ctrl-btn exit-btn" onclick="sendCmd('close')"><span class="material-icons-round">power_settings_new</span> SALIR</button>
-            </div>
-            
-            <div style="text-align:center; padding-top: 5px;">
-                <button onclick="location.reload()" style="background:none; border:none; color:gray; font-size:0.6rem; text-decoration:underline;">Reiniciar Mando</button>
+            <!-- Extras Tab -->
+            <div id="tab-extras" class="rem-content">
+                <div class="extras-grid">
+                    <button class="extra-btn" onclick="sendCmd('ambient')"><span class="material-icons-round">landscape</span>Ambiente</button>
+                    <button class="extra-btn" onclick="sendCmd('mosaic')"><span class="material-icons-round">grid_view</span>Mosaico</button>
+                    <button class="extra-btn" onclick="sendCmd('sleep-30')"><span class="material-icons-round">snooze</span>Dormir 30'</button>
+                    <button class="extra-btn" onclick="sendCmd('mute')"><span class="material-icons-round">volume_off</span>Silenciar</button>
+                </div>
+                <button class="mini-btn exit-btn" onclick="location.reload()" style="margin-top:auto;">Reiniciar Mando</button>
             </div>
         </div>
     `;
     document.body.innerHTML = ui;
 
-    let usePad = false;
-    window.toggleMode = () => {
-        usePad = !usePad;
-        document.getElementById('dpad-view').style.display = usePad ? 'none' : 'flex';
-        document.getElementById('pad-view').style.display = usePad ? 'block' : 'none';
-        document.getElementById('mode-text').textContent = usePad ? 'Usar Cruceta' : 'Usar Trackpad';
-        document.getElementById('mode-icon').textContent = usePad ? 'reorder' : 'mouse';
-        if (navigator.vibrate) navigator.vibrate(50);
-    };
+    // Tab Logic
+    document.querySelectorAll('.rem-tab').forEach(tab => {
+        tab.onclick = () => {
+            document.querySelectorAll('.rem-tab, .rem-content').forEach(el => el.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+            if (navigator.vibrate) navigator.vibrate(20);
+        };
+    });
 
     const peerObj = new Peer();
     peerObj.on('open', () => {
         const connObj = peerObj.connect(`alli-${pairId}`, { reliable: true });
+        window.sendCmd = (c) => { if (connObj.open) { connObj.send(c); if (navigator.vibrate) navigator.vibrate(35); } };
 
-        window.sendCmd = (c) => {
-            if (connObj.open) {
-                connObj.send(c);
-                if (navigator.vibrate) navigator.vibrate(35);
-            }
+        // Search Handlers
+        document.getElementById('rem-search').oninput = (e) => {
+            if (connObj.open) connObj.send({ type: 'search', query: e.target.value });
         };
 
-        // Search Input Handling
-        const searchInput = document.getElementById('rem-search');
-        let searchTimeout;
-        searchInput.addEventListener('input', (e) => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                if (connObj.open) {
-                    connObj.send({ type: 'search', query: e.target.value });
-                }
-            }, 500);
-        });
-
-        // Trackpad Touch Events
-        const pad = document.getElementById('pad-view');
-        let lastX = 0; let lastY = 0;
-        let moved = false;
-
-        pad.addEventListener('touchstart', (e) => {
-            lastX = e.touches[0].clientX;
-            lastY = e.touches[0].clientY;
-            moved = false;
-        });
-
-        pad.addEventListener('touchmove', (e) => {
-            const dx = e.touches[0].clientX - lastX;
-            const dy = e.touches[0].clientY - lastY;
-            lastX = e.touches[0].clientX;
-            lastY = e.touches[0].clientY;
+        // Trackpad Handlers
+        const pad = document.getElementById('large-pad');
+        let lastX = 0, lastY = 0, moved = false;
+        pad.addEventListener('touchstart', e => { lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; moved = false; });
+        pad.addEventListener('touchmove', e => {
+            const dx = (e.touches[0].clientX - lastX) * 2.5; // High sensitivity for large pad
+            const dy = (e.touches[0].clientY - lastY) * 2.5;
+            lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
             moved = true;
             if (connObj.open) connObj.send({ type: 'move', dx, dy });
         });
+        pad.addEventListener('touchend', () => {
+            if (!moved && connObj.open) { connObj.send({ type: 'click' }); if (navigator.vibrate) navigator.vibrate(50); }
+        });
 
-        pad.addEventListener('touchend', (e) => {
-            if (!moved && connObj.open) {
-                connObj.send({ type: 'click' });
-                if (navigator.vibrate) navigator.vibrate(40);
+        connObj.on('data', data => {
+            if (data.type === 'playing') {
+                const card = document.getElementById('now-playing');
+                document.getElementById('playing-name').textContent = data.name || "En espera...";
+                document.getElementById('playing-logo').src = data.logo || "";
+                card.classList.toggle('active', !!data.name);
+
+                if (data.next || data.prev) {
+                    document.getElementById('zap-preview').style.display = 'block';
+                    document.getElementById('next-chan').textContent = data.next || '...';
+                    document.getElementById('prev-chan').textContent = data.prev || '...';
+                }
+            } else if (data.type === 'focus-search') {
+                document.getElementById('rem-search').focus();
             }
         });
 
         connObj.on('open', () => {
             const st = document.getElementById('rem-status');
-            st.textContent = "CONECTADO";
+            st.textContent = "EN LINEA";
             st.classList.add('online');
-        });
-
-        // Receive data from TV (Now Playing, etc)
-        connObj.on('data', (data) => {
-            if (data.type === 'playing') {
-                const card = document.getElementById('now-playing');
-                const name = document.getElementById('playing-name');
-                const logo = document.getElementById('playing-logo');
-
-                if (data.name) {
-                    name.textContent = data.name;
-                    logo.src = data.logo;
-                    card.classList.add('active');
-                } else {
-                    card.classList.remove('active');
-                }
-            } else if (data.type === 'focus-search') {
-                document.getElementById('rem-search').focus();
-                if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-            }
         });
     });
 }
@@ -726,22 +751,25 @@ function initRemoteControl(pairId) {
 function handleRemoteCommand(cmd) {
     console.log("Remote Command received:", cmd);
 
+    // Exit Ambient Mode on any command except ambient toggle
+    if (isAmbientMode && cmd !== 'ambient') {
+        toggleAmbientMode();
+        return; // Don't process the original command yet, or do we? 
+        // User probably wants to exit first. Actually let's just exit and continue.
+    }
+
     // Handle Object-based commands (Trackpad)
     if (typeof cmd === 'object') {
         initCursor();
         cursorEl.style.display = 'block';
 
         if (cmd.type === 'move') {
-            cursorX += cmd.dx * 1.5; // Sensitivity
+            cursorX += cmd.dx * 1.5;
             cursorY += cmd.dy * 1.5;
-
-            // Constrain to screen
             cursorX = Math.max(0, Math.min(window.innerWidth, cursorX));
             cursorY = Math.max(0, Math.min(window.innerHeight, cursorY));
-
             cursorEl.style.transform = `translate(${cursorX - 12}px, ${cursorY - 12}px)`;
 
-            // Visual feedback: find element under cursor
             const target = document.elementFromPoint(cursorX, cursorY);
             if (target) {
                 const card = target.closest('.channel-card, .nav-item, .category-card, .close-btn, .search-box');
@@ -756,7 +784,6 @@ function handleRemoteCommand(cmd) {
             if (input) {
                 input.value = cmd.query;
                 handleSearch(cmd.query);
-                // Also visually focus the search box
                 currentFocusScope = 'search';
                 applyFocus();
             }
@@ -788,15 +815,69 @@ function handleRemoteCommand(cmd) {
     switch (cmd) {
         case 'next': zapNext(); break;
         case 'prev': zapPrev(); break;
-        case 'vol-up': if (video.volume < 0.9) video.volume += 0.1; break;
-        case 'vol-down': if (video.volume > 0.1) video.volume -= 0.1; break;
-        case 'mute': video.muted = !video.muted; break;
+        case 'vol-up': if (video.volume < 0.9) video.volume += 0.1; showToast(`Volumen: ${Math.round(video.volume * 100)}%`); break;
+        case 'vol-down': if (video.volume > 0.1) video.volume -= 0.1; showToast(`Volumen: ${Math.round(video.volume * 100)}%`); break;
+        case 'mute': video.muted = !video.muted; showToast(video.muted ? "Silenciado" : "Sonido activado"); break;
         case 'close': closePlayer(); break;
+        case 'ambient': toggleAmbientMode(); break;
+        case 'mosaic': loadView('home'); showToast("Cargando mosaico de canales..."); break;
+        case 'sleep-30': setSleepTimer(30); break;
         case 'left': if (isPlayerOpen) { closePlayer(); } else { moveFocus('left'); } break;
         case 'right': if (!isPlayerOpen) moveFocus('right'); break;
         case 'up': if (isPlayerOpen) zapNext(); else moveFocus('up'); break;
         case 'down': if (isPlayerOpen) zapPrev(); else moveFocus('down'); break;
         case 'enter': if (!isPlayerOpen) { const f = document.querySelector('.focused'); if (f) f.click(); } break;
+    }
+}
+
+function setSleepTimer(minutes) {
+    if (sleepTimerId) clearTimeout(sleepTimerId);
+    showToast(`Temporizador activado: Allivision se detendrá en ${minutes} min.`);
+    sleepTimerId = setTimeout(() => {
+        closePlayer();
+        showToast("Sleep timer activado. ¡Buenas noches!");
+    }, minutes * 60000);
+}
+
+function toggleAmbientMode() {
+    isAmbientMode = !isAmbientMode;
+    let ambient = document.getElementById('ambient-overlay');
+
+    if (isAmbientMode) {
+        if (!ambient) {
+            ambient = document.createElement('div');
+            ambient.id = 'ambient-overlay';
+            ambient.style.cssText = `
+                position: fixed; top:0; left:0; width:100%; height:100%; 
+                background: #000; z-index: 5000; display:flex; 
+                flex-direction:column; align-items:center; justify-content:center;
+                background-size: cover; background-position: center;
+                transition: all 1s ease;
+            `;
+            ambient.innerHTML = `
+                <div id="ambient-clock" style="font-size: 8rem; font-weight: 900; color: #fff; text-shadow: 0 0 30px rgba(0,0,0,0.5); font-family: 'Outfit';">00:00</div>
+                <div id="ambient-weather" style="font-size: 1.5rem; color: var(--accent-primary); margin-top: -20px;">Sintonizando paz global...</div>
+            `;
+            document.body.appendChild(ambient);
+
+            setInterval(() => {
+                const now = new Date();
+                document.getElementById('ambient-clock').textContent = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+            }, 1000);
+        }
+
+        // Random Premium Backgrounds
+        const bg = [
+            'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1920&q=80',
+            'https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1920&q=80',
+            'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1920&q=80'
+        ];
+        ambient.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('${bg[Math.floor(Math.random() * bg.length)]}')`;
+        ambient.style.display = 'flex';
+        closePlayer();
+    } else {
+        if (ambient) ambient.style.display = 'none';
+        showToast("Modo ambiente desactivado.");
     }
 }
 
@@ -964,6 +1045,17 @@ async function loadView(viewName) {
                 const favChannels = await getChannelsByFilter('id_list', favorites);
                 renderChannelGrid(favChannels, 'Tus Canales Favoritos');
             }
+        } else if (viewName === 'recent') {
+            if (recentChannels.length === 0) {
+                container.innerHTML = `
+                    <h2>Recientes</h2>
+                    <div class="hero-section">
+                        <span class="material-icons-round" style="font-size: 64px; color: var(--text-muted);">history</span>
+                        <p>No has visto ningún canal recientemente.</p>
+                    </div>`;
+            } else {
+                renderChannelGrid(recentChannels, 'Vistos Recientemente');
+            }
         } else if (viewName === 'spanish_auto') {
             const channels = await getChannelsByFilter('language', 'Español');
             renderChannelGrid(channels, 'Zapping: Canales en Español');
@@ -1007,6 +1099,9 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
                     <h2 style="margin:0;">${title}</h2>
                     ${scannerBtn}
                 </div>
+            </div>
+            <div id="grid-skeleton" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px;">
+                ${Array(12).fill('<div class="skeleton" style="height: 180px;"></div>').join('')}
             </div>`;
     } else {
         const h = document.createElement('h3');
@@ -1071,6 +1166,10 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
         }
     }
 
+    if (clear) {
+        document.getElementById('grid-skeleton')?.remove();
+    }
+
     const grid = document.createElement('div');
     grid.className = 'grid-channels';
     grid.style.display = 'grid';
@@ -1119,6 +1218,15 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
         const flagUrl = channel.country_code ? `https://flagcdn.com/w20/${channel.country_code.toLowerCase()}.png` : '';
         const isFav = favorites.includes(channel.id);
 
+        // EPG Mock Logic
+        const epgMocks = [
+            'Noticias en Vivo', 'Película de Acción', 'Deportes Extremos', 'Documental: Planeta Tierra',
+            'Serie de Comedia', 'Música Global', 'Entrevista Especial', 'Cocina con Pasión',
+            'Resumen de la Jornada', 'Top 10 Semanal', 'Clima y Satélite', 'Cine de Culto'
+        ];
+        const currentShow = epgMocks[Math.floor(Math.random() * epgMocks.length)];
+        const progress = Math.floor(Math.random() * 80) + 10;
+
         card.innerHTML = `
             <div class="status-indicator"></div>
             <button class="fav-btn ${isFav ? 'active' : ''}" onclick="event.stopPropagation(); toggleFavorite('${channel.id}', this)">
@@ -1127,9 +1235,15 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
             <div style="height: 100px; background: #fff; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; padding: 8px; overflow: hidden;">
                 ${iconHtml}
             </div>
-            <h3 style="font-size: 1rem; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${channel.name}</h3>
-            <div style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted);">
-                ${flagUrl ? `<img src="${flagUrl}" style="width: 16px; border-radius: 2px;" onerror="this.style.display='none'">` : ''}
+            <h3 style="font-size: 0.9rem; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${channel.name}</h3>
+            <div style="font-size: 0.65rem; color: var(--accent-primary); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="material-icons-round" style="font-size: 0.7rem; vertical-align: middle;">play_circle</span> ${currentShow}
+            </div>
+            <div style="height: 2px; width: 100%; background: rgba(255,255,255,0.1); margin-bottom: 8px;">
+                <div style="height: 100%; width: ${progress}%; background: var(--accent-primary);"></div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-muted);">
+                ${flagUrl ? `<img src="${flagUrl}" style="width: 14px; border-radius: 2px;" onerror="this.style.display='none'">` : ''}
                 <span>${channel.country}</span>
             </div>
         `;
