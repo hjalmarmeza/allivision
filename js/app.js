@@ -329,12 +329,16 @@ function openPlayer(channel, list = [], index = -1) {
             if (errorMsg) errorMsg.remove();
         };
 
-        video.ontimeupdate = () => {
-            if (video.currentTime > 0) {
-                clearTimeout(playTimeoutTimer);
-                const errorMsg = document.getElementById('player-error-msg');
-                if (errorMsg) errorMsg.remove();
-            }
+        // Aggressive check for actual pixel movement/data
+        video.onplay = () => {
+            const check = setInterval(() => {
+                if (video.currentTime > 0) {
+                    const errorMsg = document.getElementById('player-error-msg');
+                    if (errorMsg) errorMsg.remove();
+                    clearInterval(check);
+                }
+            }, 500);
+            setTimeout(() => clearInterval(check), 5000);
         };
 
         // ... (CC Logic)
@@ -427,11 +431,11 @@ function showPlayerError(msg, isFatal = false, channelId = null) {
     div.style.color = '#fff';
     div.innerHTML = `
         <span class="material-icons-round" style="font-size: 48px; color: #ff9f43; margin-bottom: 10px;">wifi_off</span>
-        <p style="font-size: 1.2rem; font-weight:bold;">Señal en caída...</p>
-        <p style="font-size: 0.9rem; color: #ccc; margin-top: 5px;">${msg}</p>
+        <p style="font-size: 1.2rem; font-weight:bold;">Señal inestable o lenta</p>
+        <p style="font-size: 0.9rem; color: #ccc; margin-top: 5px; max-width: 80%; text-align: center;">${msg}</p>
         <div style="display:flex; gap:10px; margin-top:20px;">
-            <button onclick="this.parentElement.parentElement.remove()" style="padding:10px 20px; background:var(--accent-secondary); border:none; border-radius:30px; color:#fff; cursor:pointer; font-weight:bold;">Reintentar</button>
-            <button onclick="document.getElementById('close-player').click()" style="padding:10px 20px; background:rgba(255,255,255,0.1); border:1px solid #555; border-radius:30px; color:#fff; cursor:pointer;">Cerrar</button>
+            <button onclick="this.closest('#player-error-msg').remove()" style="padding:10px 20px; background:var(--accent-primary); border:none; border-radius:30px; color:#050510; cursor:pointer; font-weight:bold;">Ignorar y ver</button>
+            <button onclick="document.getElementById('close-player').click()" style="padding:10px 20px; background:rgba(255,255,255,0.1); border:1px solid #555; border-radius:30px; color:#fff; cursor:pointer;">Cerrar Player</button>
         </div>
     `;
     container.appendChild(div);
@@ -899,13 +903,28 @@ function handleRemoteCommand(cmd) {
         case 'next': zapNext(); break;
         case 'prev': zapPrev(); break;
         case 'vol-up':
-            video.volume = Math.min(1, video.volume + 0.1);
-            video.muted = false;
-            showToast(`Volumen: ${Math.round(video.volume * 100)}%`);
+            if (video) {
+                video.muted = false;
+                const oldVol = video.volume;
+                video.volume = Math.min(1, video.volume + 0.1);
+                const currentVol = Math.round(video.volume * 100);
+                showToast(`Volumen TV: ${currentVol}%`);
+                if (video.volume === oldVol && oldVol < 1) {
+                    console.warn("Volume change blocked by browser");
+                    showToast("Control de volumen limitado por el navegador");
+                }
+            }
             break;
         case 'vol-down':
-            video.volume = Math.max(0, video.volume - 0.1);
-            showToast(`Volumen: ${Math.round(video.volume * 100)}%`);
+            if (video) {
+                const oldVol = video.volume;
+                video.volume = Math.max(0, video.volume - 0.1);
+                const currentVol = Math.round(video.volume * 100);
+                showToast(`Volumen TV: ${currentVol}%`);
+                if (video.volume === oldVol && oldVol > 0) {
+                    console.warn("Volume change blocked by browser");
+                }
+            }
             break;
         case 'mute': video.muted = !video.muted; showToast(video.muted ? "Silenciado" : "Sonido activado"); break;
         case 'close': closePlayer(); break;
