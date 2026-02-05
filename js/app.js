@@ -249,14 +249,32 @@ function openPlayer(channel, list = [], index = -1) {
     header.insertBefore(ccBtn, document.getElementById('close-player'));
 
     if (Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: false, lowLatencyMode: false });
+        const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 60
+        });
         hls.loadSource(channel.url);
         hls.attachMedia(video);
+
+        // Force playsinline for mobile
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
 
         hls.on(Hls.Events.MANIFEST_PARSED, function () {
             console.log("HLS Manifest Parsed - Video starting...");
             clearTimeout(playTimeoutTimer);
-            video.play().catch(e => console.log("Autoplay blocked", e));
+
+            // Try playing
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.log("Autoplay prevented, trying muted...", error);
+                    video.muted = true;
+                    video.play().catch(e => console.error("Final playback block", e));
+                    showToast("Silenciado para iniciar reproducción");
+                });
+            }
         });
 
         // AUTO-HIDE ERROR: If video actually starts playing, remove any error overlay
