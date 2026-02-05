@@ -1327,7 +1327,7 @@ async function renderChannelGrid(channels, title, clear = true, filterContext = 
         if (filterContext.type === 'category') {
             secondaryKey = 'language';
             label = 'Idioma';
-        } else if (filterContext.type === 'language') {
+        } else if (filterContext.type === 'language' || filterContext.type === 'country') {
             secondaryKey = 'category';
             label = 'Categoría';
         }
@@ -1482,7 +1482,7 @@ function renderCountries(countries) {
         `;
         card.onclick = async () => {
             const channels = await getChannelsByFilter('country', country.code);
-            renderChannelGrid(channels, `Canales de ${country.name} (${channels.length})`);
+            renderChannelGrid(channels, `Canales de ${country.name} (${channels.length})`, true, { type: 'country', value: country.code });
         };
         grid.appendChild(card);
     });
