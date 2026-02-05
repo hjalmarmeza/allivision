@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Allivision | Global Live TV</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@300;700;900&display=swap"
+        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- HLS.js for Streaming -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="material-icons-round">language</span>
+                <h1>Allivision</h1>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-view="home">
+                    <span class="material-icons-round">grid_view</span>
+                    <span>Explorar</span>
+                </button>
+                <button class="nav-item" data-view="countries">
+                    <span class="material-icons-round">public</span>
+                    <span>Países</span>
+                </button>
+                <button class="nav-item" data-view="categories">
+                    <span class="material-icons-round">category</span>
+                    <span>Categorías</span>
+                </button>
+                <button class="nav-item" data-view="languages">
+                    <span class="material-icons-round">translate</span>
+                    <span>Idiomas</span>
+                </button>
+                <button class="nav-item" data-view="favorites">
+                    <span class="material-icons-round">favorite</span>
+                    <span>Favoritos</span>
+                </button>
+            </nav>
+
+            <div class="status-bar">
+                <div class="status-dot online"></div>
+                <span>Online Stream</span>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="search-box">
+                    <span class="material-icons-round">search</span>
+                    <input type="text" placeholder="Buscar canales (ej. Bloomberg, Sky News)..." id="search-input">
+                </div>
+            </header>
+
+            <div id="view-container" class="view-container">
+                <!-- Content injected by JS -->
+                <div class="hero-section">
+                    <h2>Sintonizando el mundo...</h2>
+                    <p>Cargando miles de señales en vivo.</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Video Player Overlay (Hidden by default) -->
+        <div id="player-overlay" class="player-overlay hidden">
+            <div class="player-container">
+                <div class="player-header">
+                    <h3 id="player-title">Channel Name</h3>
+                    <button class="close-btn" id="close-player">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div class="video-wrapper">
+                    <video id="video" controls autoplay></video>
+                </div>
+                <div class="player-controls">
+                    <!-- Custom controls if needed later -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => {
+                        reg.onupdatefound = () => {
+                            const newWorker = reg.installing;
+                            newWorker.onstatechange = () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    window.location.reload();
+                                }
+                            };
+                        };
+                    });
+            });
+        }
+    </script>
+</body>
+
+</html>
